@@ -1,0 +1,3004 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anatomy Park</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #090304;
+      font-family: "Courier New", monospace;
+    }
+
+    .game-shell {
+      position: relative;
+      width: min(100vw, 960px);
+      aspect-ratio: 3 / 2;
+      background: #120506;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      outline: none;
+    }
+
+    .hud {
+      position: absolute;
+      left: 16px;
+      bottom: 14px;
+      display: flex;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .hud span {
+      display: grid;
+      place-items: center;
+      min-width: 34px;
+      height: 30px;
+      padding: 0 8px;
+      border: 2px solid #fff1d2;
+      background: rgba(5, 2, 4, 0.7);
+      color: #fff1d2;
+      font-weight: 700;
+      font-size: 14px;
+      box-shadow: 0 3px 0 #4d1116;
+    }
+  </style>
+</head>
+<body>
+  <main class="game-shell">
+    <canvas id="game" width="960" height="640" aria-label="Jogo Anatomy Park"></canvas>
+    <div class="hud" aria-hidden="true">
+      <span>A</span>
+      <span>D</span>
+      <span>Espaco</span>
+      <span>Shift</span>
+      <span>F</span>
+      <span>G</span>
+      <span>Mouse</span>
+    </div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+
+    const W = canvas.width;
+    const H = canvas.height;
+    const keys = new Set();
+    const shots = [];
+    const grenades = [];
+    const bursts = [];
+    const bloodClots = [];
+    const monocytePickups = [];
+    const macrophages = [];
+    const neuralCapsules = [];
+    const axons = [];
+    const message = { title: "", lines: [], button: "", active: false, done: null };
+    const heartImage = new Image();
+    heartImage.src = "ccoração.gif";
+    const heartBattleImage = new Image();
+    heartBattleImage.src = "coracao_dentro.png";
+    const macrophageImage = new Image();
+    macrophageImage.src = "macrofago.png";
+    const tracheaImage = new Image();
+    tracheaImage.src = "traqueia_final.png";
+    const esophagusImage = new Image();
+    esophagusImage.src = "esofago_final.png";
+    const aortaImage = new Image();
+    aortaImage.src = "aorta.png";
+    const nasalCavityImage = new Image();
+    nasalCavityImage.src = "cavidade_nariz.png";
+    const bloodImage = new Image();
+    bloodImage.src = "sangue.png";
+    const alveoliImage = new Image();
+    alveoliImage.src = "alveolos_pulmonares.png";
+    const gastricJuiceImage = new Image();
+    gastricJuiceImage.src = "suco_gastrico.png";
+    const brainArrivalImage = new Image();
+    brainArrivalImage.src = "cerebro2.png";
+    const coverImage = new Image();
+    coverImage.src = "capa2.png";
+    const humanImage = new Image();
+    humanImage.src = "humano.png";
+    const labShrinkFrames = [
+      makeImage("lab_frames/lab1.png"),
+      makeImage("lab_frames/lab2.png"),
+      makeImage("lab_frames/lab3.png"),
+      makeImage("lab_frames/lab4.png"),
+      makeImage("lab_frames/lab5.png"),
+      makeImage("lab_frames/lab6.png")
+    ];
+    const brainNeuronSprites = [
+      makeImage("neuronio_1.png"),
+      makeImage("neuronio_2.png"),
+      makeImage("neuronio_3.png")
+    ];
+    const scientistImage = new Image();
+    scientistImage.src = "cientista.png";
+    const scientistBeakerImage = new Image();
+    scientistBeakerImage.src = "cientista_becker.png";
+    const scientistIdleImage = makeImage("cientista_parado.png");
+    const scientistWalkImages = [
+      makeImage("cientista_andando_1.png"),
+      makeImage("cientista_andando_2.png"),
+      makeImage("cientista_andando_3.png"),
+      makeImage("cientista_andando_4.png"),
+      makeImage("cientista_andando_5.png"),
+      makeImage("cientista_andando_6.png")
+    ];
+    const tbSprites = [
+      makeImage("virus_vermelho.png"),
+      makeImage("virus_azul.png"),
+      makeImage("virus_verde.png"),
+      makeImage("virus_roxo.png")
+    ];
+    const trypWalkSprites = [
+      makeImage("tryp_and_1.png"),
+      makeImage("tryp_and_2.png"),
+      makeImage("tryp_and_3.png"),
+      makeImage("tryp_and_4.png")
+    ];
+    const trypSlamSprites = [
+      makeImage("tryp_bat_1.png"),
+      makeImage("tryp_bat_2.png"),
+      makeImage("tryp_bat_3.png")
+    ];
+    const GRAVITY = 1380;
+    const JUMP_FORCE = -610;
+    const FLOOR_Y = 392;
+    const HEART_FLOOR_Y = 500;
+    const HEART_BOSS_Y = HEART_FLOOR_Y + 82;
+    const HEART_ARENA_MIN_X = 72;
+    const HEART_ARENA_MAX_X = 890;
+    const STOMACH_SPAWN_X = 54;
+    const STOMACH_LEDGE_Y = 360;
+    const STOMACH_ARENA_MIN_X = 20;
+    const STOMACH_ARENA_MAX_X = W - 20;
+    const STOMACH_LEFT_LEDGE_END = 160;
+    const STOMACH_RIGHT_LEDGE_START = 800;
+    const BRAIN_ARRIVAL_FLOOR_Y = 450;
+
+    const scientist = {
+      x: 126,
+      y: 392,
+      w: 78,
+      h: 142,
+      baseSpeed: 245,
+      vy: 0,
+      onGround: true,
+      previousY: 392,
+      slowUntil: 0,
+      facing: 1,
+      step: 0,
+      leucocytes: 0,
+      monocytes: 0
+    };
+
+    const mucus = [
+      { x: 420, y: 472, r: 19, vx: 34, phase: 0 },
+      { x: 380, y: 490, r: 15, vx: -26, phase: 2.1 },
+      { x: 765, y: 158, r: 17, vx: -22, phase: 1.2 },
+      { x: 804, y: 190, r: 12, vx: 28, phase: 3.4 }
+    ];
+
+    const phase1Viruses = [
+      makeVirus(810, 128, 27, -48, 24, "#71b6c5", "#c33b48"),
+      makeVirus(720, 505, 29, 54, -20, "#96b63b", "#516915"),
+      makeVirus(560, 135, 25, -36, 28, "#8d58b5", "#4d2a73")
+    ];
+
+    const tbEnemies = [
+      makeTb(730, 405, -40, 18, 0),
+      makeTb(595, 300, 35, -22, 1),
+      makeTb(830, 250, -32, 24, 2),
+      makeTb(455, 445, 28, -16, 3)
+    ];
+
+    const leucocytePickups = [
+      { x: 260, y: 505, r: 16, taken: false },
+      { x: 395, y: 496, r: 16, taken: false },
+      { x: 535, y: 508, r: 16, taken: false },
+      { x: 690, y: 500, r: 16, taken: false }
+    ];
+
+    const sporePlatforms = [
+      { x: 215, y: 464, r: 31, phase: 0 },
+      { x: 400, y: 410, r: 32, phase: 1.4 },
+      { x: 595, y: 462, r: 33, phase: 2.1 },
+      { x: 790, y: 418, r: 32, phase: 3.2 }
+    ];
+
+    let phase = 1;
+    let gameStarted = false;
+    let last = 0;
+    let dead = false;
+    let transitionTime = 0;
+    let outroShown = false;
+    let phase3OutroShown = false;
+    let bloodSegment = 1;
+    let onRaft = false;
+    let raft = { x: 168, y: 430, vx: 0, stuck: false };
+    let heartReached = false;
+    let heartBoss = makeChagasBoss();
+    let heartWon = false;
+    let screenShake = 0;
+    let brainStage = "diagnosis";
+    let neuralScan = 0;
+    let neuralImpulse = 0;
+    let neuralMaterials = { lipids: 0, proteins: 0, atp: 0 };
+    let oligodendrocyte = { x: 120, y: 420, r: 24 };
+    let activeBrainRepairIndex = null;
+    let brainGlowIndex = null;
+    const brainRepairNodes = [
+      { x: 275, y: 345, r: 62, sprite: 0, repaired: false },
+      { x: 510, y: 345, r: 62, sprite: 1, repaired: false },
+      { x: 825, y: 345, r: 62, sprite: 2, repaired: false }
+    ];
+
+    function makeImage(src) {
+      const image = new Image();
+      image.src = src;
+      return image;
+    }
+
+    window.addEventListener("keydown", (event) => {
+      const key = event.key.toLowerCase();
+
+      if (["a", "d", "f", "g", " ", "enter", "shift"].includes(key)) {
+        event.preventDefault();
+      }
+
+      if (!gameStarted && (key === " " || key === "enter")) {
+        startGameFromCover();
+        return;
+      }
+
+      if ((phase === "labIntro" && !message.active) || phase === "humanIntro" || phase === "earExit") return;
+
+      if (phase === "win" && (key === " " || key === "enter")) {
+        gameStarted = false;
+        phase = 1;
+        return;
+      }
+
+      if (key === "a" || key === "d") keys.add(key);
+
+      if (dead && (key === " " || key === "enter")) {
+        resetGame();
+        return;
+      }
+
+      if (message.active && (key === " " || key === "enter")) {
+        const done = message.done;
+        message.active = false;
+        message.done = null;
+        if (done) done();
+        return;
+      }
+
+      if (key === " " && !message.active && !dead && phase !== "transition" && phase !== "returning" && phase !== "esophagus" && phase !== "absorbing" && phase !== 4) {
+        jumpScientist();
+      }
+
+      if (phase === 4 && key === "shift" && !message.active && !dead) {
+        enterRaft();
+      }
+
+      if (phase === 2 && key === "f" && !message.active && !dead) {
+        collectLeucocyte();
+      }
+
+      if (phase === 6 && key === "g" && !message.active && !dead) {
+        collectNeuralMaterial();
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      keys.delete(event.key.toLowerCase());
+    });
+
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    canvas.addEventListener("mousedown", (event) => {
+      if (!gameStarted) {
+        const target = mousePoint(event);
+        if (pointInPlayButton(target)) startGameFromCover();
+        return;
+      }
+
+      if (phase === "labIntro" || phase === "humanIntro" || phase === "earExit" || phase === "win") return;
+
+      if (dead || message.active || phase === "transition" || phase === "returning" || phase === "esophagus" || phase === "absorbing" || phase === "heartIntro") return;
+
+      const target = mousePoint(event);
+      if (event.button === 0 && phase === 1) {
+        fireAntibiotic(target);
+      }
+
+      if (event.button === 0 && phase === 4 && onRaft) {
+        fireAspirin(target);
+      }
+
+      if (event.button === 0 && phase === 6) {
+        repairNearestAxon(target);
+      }
+
+      if (event.button === 2 && phase === 2) {
+        throwLeucocyteGrenade(target);
+      }
+
+      if (event.button === 2 && phase === 5) {
+        throwMonocyte(target);
+      }
+    });
+
+    function makeVirus(x, y, r, vx, vy, color, spike) {
+      return { x, y, r, vx, vy, color, spike, phase: Math.random() * 4, alive: true };
+    }
+
+    function makeTb(x, y, vx, vy, spriteIndex) {
+      return { x, y, r: 29, vx, vy, spriteIndex, phase: Math.random() * 4, alive: true, hp: 1 };
+    }
+
+    function makeChagasBoss() {
+      return {
+        x: 828,
+        y: HEART_BOSS_Y,
+        r: 86,
+        killR: 46,
+        hp: 140,
+        maxHp: 140,
+        speed: 92,
+        slamTimer: 1.85,
+        slamWave: 0,
+        slamPulled: false,
+        facing: -1
+      };
+    }
+
+    function mousePoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    function playButtonRect() {
+      return { x: W / 2 - 118, y: 512, w: 236, h: 70 };
+    }
+
+    function pointInPlayButton(point) {
+      const button = playButtonRect();
+      return point.x >= button.x && point.x <= button.x + button.w && point.y >= button.y && point.y <= button.y + button.h;
+    }
+
+    function startGameFromCover() {
+      gameStarted = true;
+      resetGame();
+      phase = "labIntro";
+      transitionTime = 0;
+      showMessage(
+        "A jornada pelo corpo humano",
+        [
+          "Sou o cientista responsavel pelo Anatomy Park. Hoje vamos explorar o corpo humano por dentro.",
+          "Entraremos pelo nariz, passaremos pelos sistemas respiratorio, digestorio e circulatorio, ate chegar ao cerebro.",
+          "La dentro, vamos combater invasores e reparar os circuitos neurais antes de voltar ao laboratorio."
+        ],
+        "ENTER para entrar na maquina",
+        startHumanIntro
+      );
+    }
+
+    function startHumanIntro() {
+      phase = "humanIntro";
+      transitionTime = 0;
+    }
+
+    function resetGame() {
+      phase = 1;
+      gameStarted = true;
+      dead = false;
+      transitionTime = 0;
+      outroShown = false;
+      phase3OutroShown = false;
+      scientist.x = 126;
+      scientist.y = FLOOR_Y;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      scientist.previousY = FLOOR_Y;
+      scientist.slowUntil = 0;
+      scientist.facing = 1;
+      scientist.step = 0;
+      scientist.leucocytes = 0;
+      scientist.monocytes = 0;
+      shots.length = 0;
+      grenades.length = 0;
+      bursts.length = 0;
+      bloodClots.length = 0;
+      monocytePickups.length = 0;
+      macrophages.length = 0;
+      neuralCapsules.length = 0;
+      axons.length = 0;
+      bloodSegment = 1;
+      onRaft = false;
+      raft = { x: 168, y: 430, vx: 0, stuck: false };
+      heartReached = false;
+      heartBoss = makeChagasBoss();
+      heartWon = false;
+      screenShake = 0;
+      brainStage = "diagnosis";
+      neuralScan = 0;
+      neuralImpulse = 0;
+      neuralMaterials = { lipids: 0, proteins: 0, atp: 0 };
+      oligodendrocyte = { x: 120, y: 420, r: 24 };
+      activeBrainRepairIndex = null;
+      brainGlowIndex = null;
+      brainRepairNodes.forEach((node) => node.repaired = false);
+      phase1Viruses.splice(0, phase1Viruses.length,
+        makeVirus(810, 128, 27, -48, 24, "#71b6c5", "#c33b48"),
+        makeVirus(720, 505, 29, 54, -20, "#96b63b", "#516915"),
+        makeVirus(560, 135, 25, -36, 28, "#8d58b5", "#4d2a73")
+      );
+      tbEnemies.splice(0, tbEnemies.length,
+        makeTb(730, 405, -40, 18, 0),
+        makeTb(595, 300, 35, -22, 1),
+        makeTb(830, 250, -32, 24, 2),
+        makeTb(455, 445, 28, -16, 3)
+      );
+      leucocytePickups.forEach((item) => item.taken = false);
+      message.active = false;
+      last = performance.now();
+    }
+
+    function showMessage(title, lines, button, done) {
+      message.title = title;
+      message.lines = lines;
+      message.button = button;
+      message.active = true;
+      message.done = done || null;
+    }
+
+    function fireAntibiotic(target) {
+      const start = beakerTip();
+      const dir = normalize(target.x - start.x, target.y - start.y);
+      shots.push({
+        x: start.x,
+        y: start.y,
+        vx: dir.x * 520,
+        vy: dir.y * 520,
+        r: 8,
+        life: 1.4
+      });
+    }
+
+    function fireAspirin(target) {
+      const start = { x: raft.x + 34, y: raft.y - 22 };
+      const dir = normalize(target.x - start.x, target.y - start.y);
+      shots.push({
+        x: start.x,
+        y: start.y,
+        vx: dir.x * 560,
+        vy: dir.y * 560,
+        r: 9,
+        life: 1.5,
+        kind: "aspirin"
+      });
+    }
+
+    function throwLeucocyteGrenade(target) {
+      if (scientist.leucocytes <= 0) return;
+      scientist.leucocytes -= 1;
+      const start = beakerTip();
+      const dir = normalize(target.x - start.x, target.y - start.y);
+      grenades.push({
+        x: start.x,
+        y: start.y,
+        vx: dir.x * 430,
+        vy: dir.y * 430,
+        r: 13,
+        life: 1.7,
+        spin: 0
+      });
+    }
+
+    function throwMonocyte(target) {
+      if (scientist.monocytes <= 0 || heartWon) return;
+      scientist.monocytes -= 1;
+      const start = beakerTip();
+      const dir = normalize(target.x - start.x, target.y - start.y);
+      grenades.push({
+        x: start.x,
+        y: start.y,
+        vx: dir.x * 410,
+        vy: dir.y * 410,
+        r: 14,
+        life: 1.5,
+        spin: 0,
+        kind: "monocyte"
+      });
+    }
+
+    function beakerTip() {
+      if (phase === 1) {
+        return {
+          x: scientist.x + (scientist.facing > 0 ? 96 : -16),
+          y: scientist.y + 72
+        };
+      }
+
+      return {
+        x: scientist.x + (scientist.facing > 0 ? 78 : 4),
+        y: scientist.y + 90
+      };
+    }
+
+    function collectLeucocyte() {
+      const player = playerCircle();
+      leucocytePickups.forEach((item) => {
+        if (!item.taken && circlesTouch(player, item)) {
+          item.taken = true;
+          scientist.leucocytes += 1;
+          bursts.push(makeBurst(item.x, item.y, "#eaf7ff"));
+        }
+      });
+    }
+
+    function jumpScientist() {
+      if (!scientist.onGround) return;
+      scientist.vy = JUMP_FORCE;
+      scientist.onGround = false;
+    }
+
+    function enterRaft() {
+      if (onRaft) return;
+      const closeEnough = Math.abs((scientist.x + scientist.w / 2) - raft.x) < 95 && Math.abs(scientist.y - 360) < 120;
+      if (!closeEnough) return;
+      onRaft = true;
+      scientist.x = raft.x - scientist.w / 2;
+      scientist.y = raft.y - scientist.h - 14;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      showMessage(
+        "Hemacia-jangada",
+        [
+          "A hemacia e uma celula do sangue que transporta oxigenio pelo corpo.",
+          "Aqui ela vira sua jangada: navegue pelos vasos ate chegar ao coracao.",
+          "Coagulos de plaquetas podem travar a passagem. Use jatos de Acido Acetilsalicilico com o clique esquerdo."
+        ],
+        "ENTER para navegar",
+        null
+      );
+    }
+
+    function setupBloodSegment(segment) {
+      bloodSegment = segment;
+      raft = { x: 150, y: 420, vx: 0, stuck: false };
+      onRaft = segment > 1;
+      scientist.x = onRaft ? raft.x - scientist.w / 2 : 72;
+      scientist.y = onRaft ? raft.y - scientist.h - 14 : 360;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      const clotLayouts = [
+        [
+          { x: 330, y: 395, r: 34 },
+          { x: 470, y: 438, r: 40 },
+          { x: 610, y: 360, r: 36 },
+          { x: 760, y: 424, r: 42 }
+        ],
+        [
+          { x: 285, y: 418, r: 36 },
+          { x: 435, y: 350, r: 38 },
+          { x: 585, y: 450, r: 42 },
+          { x: 705, y: 365, r: 34 },
+          { x: 835, y: 430, r: 38 }
+        ],
+        [
+          { x: 260, y: 365, r: 34 },
+          { x: 390, y: 445, r: 42 },
+          { x: 535, y: 360, r: 38 },
+          { x: 665, y: 430, r: 40 },
+          { x: 805, y: 350, r: 36 },
+          { x: 880, y: 455, r: 34 }
+        ]
+      ];
+      bloodClots.splice(0, bloodClots.length, ...clotLayouts[segment - 1].map((clot) => ({ ...clot, alive: true })));
+      monocytePickups.splice(0, monocytePickups.length,
+        { x: 285, y: 352, r: 18, taken: false },
+        { x: 545, y: 455, r: 18, taken: false },
+        { x: 775, y: 380, r: 18, taken: false }
+      );
+      shots.length = 0;
+    }
+
+    function loop(now) {
+      const dt = Math.min((now - last) / 1000, 0.04) || 0;
+      last = now;
+
+      if (!dead && !message.active) update(dt, now);
+      draw(now);
+      requestAnimationFrame(loop);
+    }
+
+    function update(dt, now) {
+      if (phase === "labIntro") return;
+
+      if (phase === "humanIntro") {
+        transitionTime += dt;
+        if (transitionTime > 9.4) {
+          phase = 1;
+          transitionTime = 0;
+        }
+        return;
+      }
+
+      if (phase === "earExit") {
+        transitionTime += dt;
+        if (transitionTime > 6.2) {
+          phase = "win";
+          transitionTime = 0;
+        }
+        return;
+      }
+
+      if (phase === "win") return;
+
+      if (phase === "transition") {
+        transitionTime += dt;
+        if (transitionTime > 4.2) startPhase2();
+        updateBursts(dt);
+        return;
+      }
+
+      if (phase === "returning") {
+        transitionTime += dt;
+        if (transitionTime > 4.1) startEsophagusDrop();
+        updateBursts(dt);
+        return;
+      }
+
+      if (phase === "esophagus") {
+        transitionTime += dt;
+        if (transitionTime > 3.4) startPhase3();
+        updateBursts(dt);
+        return;
+      }
+
+      if (phase === "absorbing") {
+        transitionTime += dt;
+        if (transitionTime > 3.8) startBloodPhase();
+        updateBursts(dt);
+        return;
+      }
+
+      if (phase === "aorta") {
+        transitionTime += dt;
+        if (transitionTime > 4.2) startBrainArrival();
+        updateBursts(dt);
+        return;
+      }
+
+      if (phase === "brainArrival") {
+        updateBrainArrival(dt, now);
+        updateBursts(dt);
+        return;
+      }
+
+      if (phase === "heartIntro") {
+        transitionTime += dt;
+        if (transitionTime > 3.2) enterHeartBattle();
+        updateBursts(dt);
+        return;
+      }
+
+      if (phase === 4) {
+        updateBloodPhase(dt, now);
+        return;
+      }
+
+      if (phase === 6) {
+        updateBrainPhase(dt, now);
+        return;
+      }
+
+      moveScientist(dt, now);
+      updateProjectiles(dt);
+      updateBursts(dt);
+      if (screenShake > 0) screenShake -= dt;
+
+      if (phase === 1) {
+        updateMucus(dt, now);
+        updateViruses(phase1Viruses, dt);
+        handlePhase1Collisions(now);
+        if (phase1Viruses.every((virus) => !virus.alive) && scientist.x > W - scientist.w - 46) {
+          phase = "transition";
+          transitionTime = 0;
+          shots.length = 0;
+        }
+      }
+
+      if (phase === 2) {
+        updateTbEnemies(dt);
+        handlePhase2Collisions();
+        if (tbEnemies.every((enemy) => !enemy.alive) && !outroShown) {
+          outroShown = true;
+          showMessage(
+            "Leucocitos",
+            [
+              "As granadas coletadas eram leucocitos: celulas de defesa do corpo.",
+              "Eles reconhecem invasores, combatem microrganismos e ajudam a proteger os tecidos.",
+              "Com os bacilos da tuberculose controlados, os alveolos voltam a trabalhar melhor."
+            ],
+            "ENTER para continuar",
+            startReturnToEpiglottis
+          );
+        }
+      }
+
+      if (phase === 3) {
+        handlePhase3Surfaces();
+        if (scientist.y + scientist.h > 555) {
+          dead = true;
+        }
+        const atStomachExit = scientist.x + scientist.w >= STOMACH_ARENA_MAX_X - 1;
+        if (atStomachExit && keys.has("d") && scientist.onGround && !phase3OutroShown) {
+          phase3OutroShown = true;
+          showMessage(
+            "Estomago atravessado",
+            [
+              "Voce cruzou o suco gastrico usando esporos resistentes como apoio.",
+              "A microbiota e o conjunto de microrganismos que vivem no corpo e ajudam no equilibrio, defesa e digestao.",
+              "Nem todo microrganismo e inimigo: o contexto e o equilibrio fazem muita diferenca."
+            ],
+            "ENTER para continuar",
+            startAbsorption
+          );
+        }
+      }
+
+      if (phase === 5) {
+        updateHeartBattle(dt, now);
+      }
+
+    }
+
+    function moveScientist(dt, now) {
+      const slowed = now < scientist.slowUntil;
+      const speed = slowed ? scientist.baseSpeed * 0.42 : scientist.baseSpeed;
+      let direction = 0;
+
+      scientist.previousY = scientist.y;
+
+      if (keys.has("a")) direction -= 1;
+      if (keys.has("d")) direction += 1;
+
+      if (direction !== 0) {
+        scientist.facing = direction;
+        scientist.x += direction * speed * dt;
+        scientist.step += dt * (slowed ? 5 : 10);
+      } else {
+        scientist.step = 0;
+      }
+
+      if (phase === 5) {
+        scientist.x = clamp(scientist.x, HEART_ARENA_MIN_X, HEART_ARENA_MAX_X - scientist.w);
+      } else if (phase === 3) {
+        scientist.x = clamp(scientist.x, STOMACH_ARENA_MIN_X, STOMACH_ARENA_MAX_X - scientist.w);
+      } else {
+        scientist.x = clamp(scientist.x, 42, W - scientist.w - 20);
+      }
+
+      scientist.vy += GRAVITY * dt;
+      scientist.y += scientist.vy * dt;
+      scientist.onGround = false;
+
+      const groundY = phase === 5 ? HEART_FLOOR_Y : FLOOR_Y;
+      if (phase !== 3 && scientist.y >= groundY) {
+        scientist.y = groundY;
+        scientist.vy = 0;
+        scientist.onGround = true;
+      }
+    }
+
+    function updateMucus(dt, now) {
+      mucus.forEach((blob) => {
+        blob.x += blob.vx * dt;
+        blob.y += Math.sin(now / 420 + blob.phase) * 13 * dt;
+        if (blob.x < 285 || blob.x > 865) blob.vx *= -1;
+      });
+    }
+
+    function updateViruses(list, dt) {
+      list.forEach((virus) => {
+        if (!virus.alive) return;
+        virus.x += virus.vx * dt;
+        virus.y += virus.vy * dt;
+        virus.phase += dt * 2.8;
+        if (virus.x < 235 || virus.x > 895) virus.vx *= -1;
+        if (virus.y < 105 || virus.y > 530) virus.vy *= -1;
+      });
+    }
+
+    function updateTbEnemies(dt) {
+      tbEnemies.forEach((enemy) => {
+        if (!enemy.alive) return;
+        enemy.x += enemy.vx * dt;
+        enemy.y += enemy.vy * dt;
+        enemy.phase += dt * 3;
+        if (enemy.x < 250 || enemy.x > 890) enemy.vx *= -1;
+        if (enemy.y < 220 || enemy.y > 510) enemy.vy *= -1;
+      });
+    }
+
+    function updateProjectiles(dt) {
+      [...shots, ...grenades].forEach((shot) => {
+        shot.x += shot.vx * dt;
+        shot.y += shot.vy * dt;
+        shot.life -= dt;
+        shot.spin += dt * 8;
+      });
+
+      removeDead(shots);
+      removeDead(grenades);
+
+      shots.forEach((shot) => {
+        phase1Viruses.forEach((virus) => {
+          if (virus.alive && circlesTouch(shot, virus)) {
+            shot.life = 0;
+            virus.alive = false;
+            bursts.push(makeBurst(virus.x, virus.y, virus.color));
+          }
+        });
+
+        bloodClots.forEach((clot) => {
+          if (phase === 4 && clot.alive && shot.kind === "aspirin" && circlesTouch(shot, clot)) {
+            shot.life = 0;
+            clot.alive = false;
+            bursts.push(makeBurst(clot.x, clot.y, "#f5d6d6"));
+          }
+        });
+      });
+
+      grenades.forEach((grenade) => {
+        tbEnemies.forEach((enemy) => {
+          if (enemy.alive && circlesTouch(grenade, enemy)) {
+            grenade.life = 0;
+            enemy.alive = false;
+            bursts.push(makeBurst(enemy.x, enemy.y, "#d7f6ff"));
+          }
+        });
+      });
+    }
+
+    function removeDead(list) {
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const shot = list[i];
+        if (shot.life <= 0 || shot.x < -40 || shot.x > W + 40 || shot.y < -40 || shot.y > H + 40) {
+          list.splice(i, 1);
+        }
+      }
+    }
+
+    function updateBursts(dt) {
+      bursts.forEach((burst) => burst.life -= dt);
+      for (let i = bursts.length - 1; i >= 0; i -= 1) {
+        if (bursts[i].life <= 0) bursts.splice(i, 1);
+      }
+    }
+
+    function handlePhase1Collisions(now) {
+      const player = playerCircle();
+      if (mucus.some((blob) => circlesTouch(player, blob))) {
+        scientist.slowUntil = now + 1300;
+      }
+
+      if (phase1Viruses.some((virus) => virus.alive && circlesTouch(player, virus))) {
+        dead = true;
+      }
+    }
+
+    function handlePhase2Collisions() {
+      const player = playerCircle();
+      if (tbEnemies.some((enemy) => enemy.alive && circlesTouch(player, enemy))) {
+        dead = true;
+      }
+    }
+
+    function startPhase2() {
+      phase = 2;
+      scientist.x = 86;
+      scientist.y = FLOOR_Y;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      scientist.facing = 1;
+      scientist.leucocytes = 0;
+      shots.length = 0;
+      grenades.length = 0;
+      showMessage(
+        "Fase 2: Alveolos Pulmonares",
+        [
+          "Voce chegou aos alveolos, pequenos sacos do pulmao onde o oxigenio entra no sangue.",
+          "A tuberculose nao e causada por virus: ela vem de uma bacteria chamada Mycobacterium tuberculosis.",
+          "Ela pode inflamar o tecido pulmonar e atrapalhar a respiracao. Colete leucocitos com F e arremesse com o botao direito."
+        ],
+        "ENTER para lutar",
+        null
+      );
+    }
+
+    function startReturnToEpiglottis() {
+      phase = "returning";
+      transitionTime = 0;
+      shots.length = 0;
+      grenades.length = 0;
+      bursts.length = 0;
+    }
+
+    function startEsophagusDrop() {
+      phase = "esophagus";
+      transitionTime = 0;
+    }
+
+    function startPhase3() {
+      phase = 3;
+      transitionTime = 0;
+      phase3OutroShown = false;
+      scientist.x = STOMACH_SPAWN_X;
+      scientist.y = STOMACH_LEDGE_Y;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      scientist.facing = 1;
+      showMessage(
+        "Fase 3: Estomago",
+        [
+          "O suco gastrico e um liquido muito acido, com enzimas, que ajuda a quebrar alimentos e destruir muitos microrganismos.",
+          "Esporos bacterianos, como os de Clostridium difficile, tem uma capa resistente e podem sobreviver melhor a acidez.",
+          "Pule com ESPACO sobre os esporos para atravessar o lago. A microbiota e a comunidade de microrganismos que vive no corpo."
+        ],
+        "ENTER para atravessar",
+        null
+      );
+    }
+
+    function handlePhase3Surfaces() {
+      const bottomBefore = scientist.previousY + scientist.h;
+      const bottomNow = scientist.y + scientist.h;
+      const centerX = scientist.x + scientist.w * 0.52;
+
+      const overLeftLedge = centerX <= STOMACH_LEFT_LEDGE_END;
+      const overRightLedge = centerX >= STOMACH_RIGHT_LEDGE_START;
+      if ((overLeftLedge || overRightLedge) && scientist.y >= STOMACH_LEDGE_Y) {
+        scientist.y = STOMACH_LEDGE_Y;
+        scientist.vy = 0;
+        scientist.onGround = true;
+      }
+
+      sporePlatforms.forEach((spore) => {
+        const top = spore.y - spore.r * 0.72;
+        const closeX = Math.abs(centerX - spore.x) < spore.r + 16;
+        const fallingOntoTop = scientist.vy >= 0 && bottomBefore <= top + 18 && bottomNow >= top;
+
+        if (closeX && fallingOntoTop) {
+          scientist.y = top - scientist.h;
+          scientist.vy = 0;
+          scientist.onGround = true;
+        }
+      });
+    }
+
+    function startAbsorption() {
+      phase = "absorbing";
+      transitionTime = 0;
+      shots.length = 0;
+      grenades.length = 0;
+      bursts.length = 0;
+    }
+
+    function startBloodPhase() {
+      phase = 4;
+      heartReached = false;
+      setupBloodSegment(1);
+      showMessage(
+        "Nutriente no sangue",
+        [
+          "Depois de atravessar o estomago, o cientista foi absorvido como um nutriente e caiu na corrente sanguinea.",
+          "Para viajar pelo sangue, encontre a hemacia e pressione SHIFT para subir nela.",
+          "Passe por tres trechos de veias e arterias. Colete monocitos pelo caminho: eles poderao virar macrofagos em fases futuras."
+        ],
+        "ENTER para procurar a hemacia",
+        null
+      );
+    }
+
+    function updateBloodPhase(dt, now) {
+      updateProjectiles(dt);
+      updateBursts(dt);
+
+      if (!onRaft) {
+        const speed = 220;
+        let direction = 0;
+        if (keys.has("a")) direction -= 1;
+        if (keys.has("d")) direction += 1;
+        scientist.x += direction * speed * dt;
+        scientist.x = clamp(scientist.x, 42, 250);
+        scientist.y = 360;
+        return;
+      }
+
+      let direction = 0;
+      if (keys.has("a")) direction -= 1;
+      if (keys.has("d")) direction += 1;
+
+      raft.stuck = bloodClots.some((clot) => clot.alive && Math.abs(raft.x + 55 - clot.x) < clot.r + 50 && Math.abs(raft.y - clot.y) < clot.r + 40);
+      const canMove = !(raft.stuck && direction > 0);
+      if (canMove) {
+        raft.x += direction * 235 * dt;
+      }
+      raft.y = 420 + Math.sin(now / 500 + bloodSegment) * 28;
+      raft.x = clamp(raft.x, 70, W - 80);
+
+      scientist.x = raft.x - scientist.w / 2;
+      scientist.y = raft.y - scientist.h - 14;
+      scientist.facing = direction !== 0 ? direction : scientist.facing;
+
+      monocytePickups.forEach((item) => {
+        if (!item.taken && circlesTouch({ x: raft.x, y: raft.y, r: 52 }, item)) {
+          item.taken = true;
+          scientist.monocytes += 1;
+          bursts.push(makeBurst(item.x, item.y, "#d7ecff"));
+        }
+      });
+
+      if (raft.x > W - 92 && !heartReached) {
+        if (bloodSegment < 3) {
+          setupBloodSegment(bloodSegment + 1);
+        } else {
+          heartReached = true;
+          showMessage(
+            "Chegada ao coracao",
+            [
+              "A hemacia-jangada chegou ao coracao depois de atravessar veias e arterias.",
+              "As plaquetas ajudam a coagular quando ha ferimentos, mas em excesso podem formar trombos dentro dos vasos.",
+              "Voce guardou " + scientist.monocytes + " monocitos. No tecido do coracao, eles poderao virar macrofagos."
+            ],
+            "ENTER para entrar no coracao",
+            startHeartBattle
+          );
+        }
+      }
+    }
+
+    function startHeartBattle() {
+      phase = "heartIntro";
+      transitionTime = 0;
+      shots.length = 0;
+      grenades.length = 0;
+      bursts.length = 0;
+    }
+
+    function enterHeartBattle() {
+      phase = 5;
+      onRaft = false;
+      heartWon = false;
+      heartBoss = makeChagasBoss();
+      macrophages.length = 0;
+      shots.length = 0;
+      grenades.length = 0;
+      bursts.length = 0;
+      scientist.x = 118;
+      scientist.y = HEART_FLOOR_Y;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      scientist.facing = 1;
+      showMessage(
+        "Fase 4: Coracao",
+        [
+          "O coracao e um grande musculo que bombeia sangue para o corpo todo.",
+          "A Doenca de Chagas e causada pelo protozoario Trypanosoma cruzi, um parasita que pode invadir celulas e afetar o musculo cardiaco.",
+          "Com o tempo, ele pode inflamar e enfraquecer o coracao, prejudicando o bombeamento do sangue.",
+          "Arremesse monocitos com o botao direito. Ao tocar o tecido muscular, eles viram macrofagos e atacam o parasita gigante."
+        ],
+        "ENTER para lutar",
+        null
+      );
+    }
+
+    function updateHeartBattle(dt, now) {
+      updateMacrophages(dt, now);
+      updateChagasBoss(dt);
+      scientist.y = HEART_FLOOR_Y;
+      scientist.vy = 0;
+      scientist.onGround = true;
+
+      grenades.forEach((grenade) => {
+        if (grenade.kind === "monocyte" && grenade.y + grenade.r >= HEART_FLOOR_Y + scientist.h - 4) {
+          macrophages.push({
+            x: grenade.x,
+            y: HEART_FLOOR_Y + scientist.h - 28,
+            r: 22,
+            attackTimer: 0.35,
+            life: 9,
+            phase: Math.random() * 4
+          });
+          grenade.life = 0;
+          bursts.push(makeBurst(grenade.x, grenade.y, "#d7ecff"));
+        }
+      });
+
+      if (circlesTouch(playerCircle(), { x: heartBoss.x, y: heartBoss.y, r: heartBoss.killR }) && !heartWon) {
+        dead = true;
+      }
+
+      if (heartBoss.hp <= 0 && !heartWon) {
+        heartWon = true;
+        heartBoss.hp = 0;
+        bursts.push(makeBurst(heartBoss.x, heartBoss.y, "#e9d6ff"));
+        showMessage(
+          "Macrofagos",
+          [
+            "Quando os monocitos saem da corrente sanguinea e entram nos tecidos, eles se diferenciam em macrofagos.",
+            "Macrofagos sao celulas de defesa que englobam invasores, removem restos celulares e ajudam a organizar a resposta imune.",
+            "Com o Trypanosoma cruzi controlado, o tecido muscular do coracao fica protegido."
+          ],
+          "ENTER para subir pela aorta",
+          startAortaTransition
+        );
+      }
+    }
+
+    function updateChagasBoss(dt) {
+      if (heartWon) return;
+      const targetX = scientist.x + scientist.w / 2;
+      const dir = Math.sign(targetX - heartBoss.x) || heartBoss.facing;
+      heartBoss.facing = dir;
+      heartBoss.x += dir * heartBoss.speed * dt;
+      heartBoss.x = clamp(heartBoss.x, HEART_ARENA_MIN_X + 170, HEART_ARENA_MAX_X - 40);
+      heartBoss.y = HEART_BOSS_Y;
+
+      heartBoss.slamTimer -= dt;
+      if (heartBoss.slamTimer <= 0) {
+        heartBoss.slamTimer = 1.65;
+        heartBoss.slamWave = 0.78;
+        heartBoss.slamPulled = false;
+        screenShake = 0.78;
+      }
+
+      if (heartBoss.slamWave > 0) {
+        heartBoss.slamWave -= dt;
+        const playerDist = Math.abs((scientist.x + scientist.w / 2) - heartBoss.x);
+        if (playerDist < 360 && scientist.onGround && heartBoss.slamWave > 0.38) {
+          scientist.slowUntil = performance.now() + 900;
+          if (!heartBoss.slamPulled) {
+            const pull = Math.sign(heartBoss.x - (scientist.x + scientist.w / 2)) || 1;
+            scientist.x += pull * 58;
+            scientist.x = clamp(scientist.x, HEART_ARENA_MIN_X, HEART_ARENA_MAX_X - scientist.w);
+            scientist.y = HEART_FLOOR_Y;
+            heartBoss.slamPulled = true;
+          }
+        }
+      }
+    }
+
+    function updateMacrophages(dt, now) {
+      macrophages.forEach((mac) => {
+        mac.life -= dt;
+        mac.phase += dt * 4;
+        const dir = normalize(heartBoss.x - mac.x, heartBoss.y - mac.y);
+        mac.x += dir.x * 105 * dt;
+        mac.y += dir.y * 55 * dt;
+        mac.attackTimer -= dt;
+
+        if (!heartWon && circlesTouch(mac, heartBoss) && mac.attackTimer <= 0) {
+          mac.attackTimer = 0.8;
+          heartBoss.hp -= 12;
+          bursts.push(makeBurst(heartBoss.x + (Math.random() - 0.5) * 55, heartBoss.y, "#f0dbff"));
+        }
+      });
+
+      for (let i = macrophages.length - 1; i >= 0; i -= 1) {
+        if (macrophages[i].life <= 0) macrophages.splice(i, 1);
+      }
+    }
+
+    function startAortaTransition() {
+      phase = "aorta";
+      transitionTime = 0;
+      shots.length = 0;
+      grenades.length = 0;
+      bursts.length = 0;
+    }
+
+    function startBrainArrival(showIntro = true) {
+      phase = "brainArrival";
+      transitionTime = 0;
+      scientist.x = 46;
+      scientist.y = BRAIN_ARRIVAL_FLOOR_Y - scientist.h;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      scientist.facing = 1;
+      if (showIntro) {
+        brainRepairNodes.forEach((node) => node.repaired = false);
+        activeBrainRepairIndex = null;
+        brainGlowIndex = null;
+      }
+      if (showIntro) {
+        showMessage(
+          "Chegada ao cerebro",
+          [
+            "Depois de subir pela aorta, voce chegou ao tecido cerebral.",
+            "Ande pela camada delimitada e encoste nos neuronios danificados para iniciar o reparo.",
+            "Cada neuronio consertado some e envia um brilho de impulso eletrico pelo circuito."
+          ],
+          "ENTER para explorar",
+          null
+        );
+      }
+    }
+
+    function updateBrainArrival(dt, now) {
+      if (message.active || dead) return;
+      let direction = 0;
+      if (keys.has("a")) direction -= 1;
+      if (keys.has("d")) direction += 1;
+      scientist.x = clamp(scientist.x + direction * scientist.baseSpeed * dt, 36, W - scientist.w - 38);
+      scientist.y = BRAIN_ARRIVAL_FLOOR_Y - scientist.h;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      if (direction !== 0) {
+        scientist.facing = direction;
+        scientist.step += dt * 10;
+      } else {
+        scientist.step = 0;
+      }
+
+      const playerX = scientist.x + scientist.w / 2;
+      const targetIndex = brainRepairNodes.findIndex((node) => !node.repaired && Math.abs(playerX - node.x) < 86);
+      if (targetIndex >= 0) startBrainPhase(targetIndex);
+    }
+
+    function startBrainPhase(nodeIndex = null) {
+      phase = 6;
+      activeBrainRepairIndex = nodeIndex;
+      brainStage = "diagnosis";
+      neuralScan = 0;
+      neuralImpulse = 0;
+      neuralMaterials = { lipids: 0, proteins: 0, atp: 0 };
+      oligodendrocyte = { x: 120, y: 420, r: 24 };
+      scientist.x = 70;
+      scientist.y = FLOOR_Y;
+      scientist.vy = 0;
+      scientist.onGround = true;
+      setupBrainObjects();
+    }
+
+    function setupBrainObjects() {
+      axons.splice(0, axons.length,
+        { x: 200, y: 210, w: 560, damaged: false, repair: 1, angle: 0 },
+        { x: 170, y: 315, w: 620, damaged: true, repair: 0, angle: 0 },
+        { x: 240, y: 420, w: 520, damaged: true, repair: 0, angle: 0 },
+        { x: 160, y: 520, w: 650, damaged: false, repair: 1, angle: 0 }
+      );
+      neuralCapsules.splice(0, neuralCapsules.length,
+        { x: 125, y: 470, type: "lipids", color: "#f4d34f", label: "L", taken: false },
+        { x: 215, y: 505, type: "proteins", color: "#f07c2b", label: "P", taken: false },
+        { x: 305, y: 468, type: "atp", color: "#56d36a", label: "A", taken: false },
+        { x: 395, y: 505, type: "lipids", color: "#f4d34f", label: "L", taken: false },
+        { x: 485, y: 472, type: "proteins", color: "#f07c2b", label: "P", taken: false },
+        { x: 575, y: 508, type: "atp", color: "#56d36a", label: "A", taken: false },
+        { x: 665, y: 472, type: "lipids", color: "#f4d34f", label: "L", taken: false },
+        { x: 755, y: 505, type: "proteins", color: "#f07c2b", label: "P", taken: false },
+        { x: 845, y: 468, type: "atp", color: "#56d36a", label: "A", taken: false }
+      );
+    }
+
+    function updateBrainPhase(dt, now) {
+      if (screenShake > 0) screenShake -= dt;
+      if (brainStage === "diagnosis") {
+        neuralScan += dt;
+        if (neuralScan > 3.2) {
+          brainStage = "collect";
+          showMessage(
+            "Coleta de materiais",
+            [
+              "Agora voce vai juntar os recursos usados para reconstruir a bainha de mielina.",
+              "Lipideos formam a parte gordurosa da mielina; proteinas ajudam na estrutura; ATP fornece energia celular.",
+              "Colete as capsulas com G. Voce pode continuar coletando mesmo durante o reparo, se faltar material."
+            ],
+            "ENTER para coletar",
+            null
+          );
+        }
+      }
+
+      if (brainStage === "collect" || brainStage === "repair") {
+        let direction = 0;
+        if (keys.has("a")) direction -= 1;
+        if (keys.has("d")) direction += 1;
+        oligodendrocyte.x = clamp(oligodendrocyte.x + direction * 235 * dt, 70, W - 70);
+        oligodendrocyte.y = 420 + Math.sin(now / 350) * 18;
+        if (hasAnyNeuralMaterial()) brainStage = "repair";
+      }
+
+      if (brainStage === "test") {
+        neuralImpulse += dt * 0.28;
+        if (neuralImpulse > 1.15) {
+          brainStage = "done";
+          if (activeBrainRepairIndex !== null && brainRepairNodes[activeBrainRepairIndex]) {
+            brainRepairNodes[activeBrainRepairIndex].repaired = true;
+            brainGlowIndex = activeBrainRepairIndex;
+          }
+          const remaining = brainRepairNodes.filter((node) => !node.repaired).length;
+          showMessage(
+            "Impulso restaurado",
+            [
+              "O reparo representa o oligodendrocito enrolando novas camadas de mielina ao redor do axonio.",
+              "Com a cobertura fechada, o impulso eletrico volta a seguir pelo caminho certo e com mais velocidade.",
+              remaining > 0 ? "Volte ao tecido cerebral e procure o proximo neuronio danificado." : "Todos os neuronios danificados desta area foram reparados."
+            ],
+            remaining > 0 ? "ENTER para voltar ao cerebro" : "ENTER para sair pela orelha",
+            () => {
+              activeBrainRepairIndex = null;
+              if (remaining > 0) {
+                startBrainArrival(false);
+              } else {
+                phase = "earExit";
+                transitionTime = 0;
+              }
+            }
+          );
+        }
+      }
+    }
+
+    function collectNeuralMaterial() {
+      if (phase !== 6 || (brainStage !== "collect" && brainStage !== "repair")) return;
+      neuralCapsules.forEach((item) => {
+        if (!item.taken && circlesTouch({ x: oligodendrocyte.x, y: oligodendrocyte.y, r: 72 }, { x: item.x, y: item.y, r: 30 })) {
+          item.taken = true;
+          neuralMaterials[item.type] += 1;
+          bursts.push(makeBurst(item.x, item.y, item.color));
+        }
+      });
+    }
+
+    function repairNearestAxon(target) {
+      if (phase !== 6 || brainStage !== "repair" || !hasAnyNeuralMaterial()) return;
+      const targetAxon = axons.find((axon) => axon.damaged && axon.repair < 1 && pointNearAxon(target, axon));
+      if (!targetAxon) return;
+      spendOneNeuralMaterial();
+      targetAxon.repair = clamp(targetAxon.repair + 0.5, 0, 1);
+      targetAxon.angle += Math.PI / 2;
+      bursts.push(makeBurst(target.x, target.y, "#9ed8ff"));
+      if (axons.every((axon) => !axon.damaged || axon.repair >= 1)) {
+        brainStage = "test";
+        neuralImpulse = 0;
+      }
+    }
+
+    function pointNearAxon(point, axon) {
+      return point.x > axon.x - 50 && point.x < axon.x + axon.w + 50 && Math.abs(point.y - axon.y) < 64;
+    }
+
+    function hasNeuralMaterials() {
+      return neuralMaterials.lipids > 0 && neuralMaterials.proteins > 0 && neuralMaterials.atp > 0;
+    }
+
+    function hasAnyNeuralMaterial() {
+      return neuralMaterials.lipids + neuralMaterials.proteins + neuralMaterials.atp > 0;
+    }
+
+    function spendOneNeuralMaterial() {
+      if (neuralMaterials.lipids > 0) {
+        neuralMaterials.lipids -= 1;
+      } else if (neuralMaterials.proteins > 0) {
+        neuralMaterials.proteins -= 1;
+      } else if (neuralMaterials.atp > 0) {
+        neuralMaterials.atp -= 1;
+      }
+    }
+
+    function draw(now) {
+      ctx.clearRect(0, 0, W, H);
+
+      if (!gameStarted) {
+        drawCoverScreen(now);
+        return;
+      }
+
+      if (phase === "labIntro") drawLabIntro(now);
+      if (phase === "humanIntro") drawHumanIntro(now);
+      if (phase === "earExit") drawEarExit(now);
+      if (phase === "win") drawWinScreen(now);
+      if (phase === 1) drawPhase1Background(now);
+      if (phase === "transition") drawTransition(now);
+      if (phase === "returning") drawReturnTransition(now);
+      if (phase === "esophagus") drawEsophagusDrop(now);
+      if (phase === "absorbing") drawAbsorption(now);
+      if (phase === "heartIntro") drawHeartIntro(now);
+      if (phase === "aorta") drawAortaTransition(now);
+      if (phase === "brainArrival") drawBrainArrivalScene(now);
+      if (phase === 2) drawPhase2Background(now);
+      if (phase === 3) drawPhase3Background(now);
+      if (phase === 4) drawBloodBackground(now);
+      if (phase === 5) drawHeartBackground(now);
+      if (phase === 6) drawBrainBackground(now);
+
+      if (phase === 1) {
+        mucus.forEach((blob) => drawMucus(blob, now));
+        phase1Viruses.forEach((virus) => virus.alive && drawVirus(virus, now));
+      }
+
+      if (phase === 2) {
+        leucocytePickups.forEach((item) => !item.taken && drawLeucocyte(item, now));
+        tbEnemies.forEach((enemy) => enemy.alive && drawTbEnemy(enemy, now));
+      }
+
+      if (phase === 3) {
+        sporePlatforms.forEach((spore) => drawSporePlatform(spore, now));
+      }
+
+      if (phase === 4) {
+        monocytePickups.forEach((item) => !item.taken && drawMonocyte(item, now));
+        bloodClots.forEach((clot) => clot.alive && drawClot(clot, now));
+        drawRaft(now);
+      }
+
+      if (phase === 5) {
+        macrophages.forEach((mac) => drawMacrophage(mac, now));
+        drawChagasBoss(now);
+        drawBossBar();
+      }
+
+      if (phase === 6) {
+        axons.forEach((axon) => drawAxon(axon, now));
+        neuralCapsules.forEach((item) => !item.taken && drawNeuralCapsule(item, now));
+        drawOligodendrocyte(now);
+        if (brainStage === "test") drawNeuralImpulse(now);
+      }
+
+      if (phase !== "labIntro" && phase !== "humanIntro" && phase !== "earExit" && phase !== "win" && phase !== "transition" && phase !== "returning" && phase !== "esophagus" && phase !== "absorbing" && phase !== "heartIntro" && phase !== "aorta" && phase !== "brainArrival" && phase !== 6) drawScientist(scientist, now);
+      shots.forEach(drawAntibiotic);
+      grenades.forEach(drawGrenade);
+      bursts.forEach(drawBurst);
+      if (phase !== "labIntro" && phase !== "humanIntro" && phase !== "earExit" && phase !== "win") drawGameHud();
+
+      if (message.active) drawMessageBox();
+      if (dead) drawDeathScreen(now);
+    }
+
+    function drawCoverScreen(now) {
+      ctx.fillStyle = "#090304";
+      ctx.fillRect(0, 0, W, H);
+
+      if (coverImage.complete && coverImage.naturalWidth > 0) {
+        ctx.drawImage(coverImage, 0, 0, W, H);
+        ctx.fillStyle = "rgba(7, 1, 6, 0.08)";
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      const button = playButtonRect();
+      const pulse = 1 + Math.sin(now / 280) * 0.035;
+      ctx.save();
+      ctx.translate(button.x + button.w / 2, button.y + button.h / 2);
+      ctx.scale(pulse, pulse);
+      ctx.fillStyle = "rgba(9, 3, 8, 0.82)";
+      ctx.fillRect(-button.w / 2, -button.h / 2, button.w, button.h);
+      ctx.strokeStyle = "#ffe06d";
+      ctx.lineWidth = 5;
+      ctx.strokeRect(-button.w / 2, -button.h / 2, button.w, button.h);
+      ctx.fillStyle = "#fff6d8";
+      ctx.font = "bold 36px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("PLAY", 0, 2);
+      ctx.restore();
+
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 15px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("clique para jogar", W / 2, button.y + button.h + 28);
+    }
+
+    function drawHumanBackdrop() {
+      ctx.fillStyle = "#17152a";
+      ctx.fillRect(0, 0, W, H);
+
+      if (humanImage.complete && humanImage.naturalWidth > 0) {
+        const scale = Math.max(W / humanImage.naturalWidth, H / humanImage.naturalHeight);
+        const imgW = humanImage.naturalWidth * scale;
+        const imgH = humanImage.naturalHeight * scale;
+        ctx.drawImage(humanImage, W / 2 - imgW / 2, H / 2 - imgH / 2, imgW, imgH);
+      }
+    }
+
+    function drawShrinkMachine(now, active = false) {
+      ctx.save();
+      ctx.translate(120, 420);
+      ctx.fillStyle = "#202a48";
+      ctx.fillRect(-58, -125, 116, 150);
+      ctx.strokeStyle = active ? "#8ff7ff" : "#52658d";
+      ctx.lineWidth = 7;
+      ctx.strokeRect(-58, -125, 116, 150);
+      ctx.fillStyle = active ? "rgba(105, 239, 255, 0.35)" : "rgba(40, 73, 110, 0.45)";
+      ctx.fillRect(-45, -110, 90, 115);
+      ctx.fillStyle = active ? "#fff47a" : "#81a5d4";
+      circle(0, -145, 16 + (active ? Math.sin(now / 80) * 5 : 0));
+      ctx.fillStyle = "#12182c";
+      ctx.fillRect(-72, 25, 144, 22);
+      ctx.restore();
+    }
+
+    function drawLabIntro(now) {
+      drawLabShrinkFrame(labShrinkFrames[0]);
+    }
+
+    function drawHumanIntro(now) {
+      const progress = clamp(transitionTime / 9.4, 0, 1);
+      const shrinking = progress < 0.58;
+
+      if (shrinking) {
+        const shrinkT = smoothstep(clamp(progress / 0.58, 0, 1));
+        const frameProgress = shrinkT * (labShrinkFrames.length - 1);
+        const frameIndex = Math.min(labShrinkFrames.length - 2, Math.floor(frameProgress));
+        const blend = smoothstep(frameProgress - frameIndex);
+        drawLabShrinkAnimationFrame(frameIndex, blend, shrinkT, now);
+      } else {
+        const t = smoothstep((progress - 0.58) / 0.42);
+        drawHumanBackdrop();
+        if (t < 0.18) {
+          ctx.save();
+          ctx.globalAlpha = 1 - smoothstep(t / 0.18);
+          drawLabShrinkFrame(labShrinkFrames[labShrinkFrames.length - 1]);
+          ctx.restore();
+        }
+        const x = cubic(170, 310, 420, 447, t);
+        const y = cubic(510, 390, 355, 323, t) - Math.sin(t * Math.PI) * 105;
+        const scale = 0.16 * (1 - smoothstep(clamp((t - 0.76) / 0.24, 0, 1)));
+        if (scale > 0.01) {
+          drawMiniScientist(x, y, now, Math.sin(t * Math.PI * 5) * 0.18, scale);
+        }
+      }
+
+      ctx.fillStyle = "rgba(8, 2, 10, 0.72)";
+      ctx.fillRect(160, 18, 640, 54);
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 20px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      const introText = shrinking
+        ? "Maquina de reducao ativada..."
+        : progress < 0.9
+          ? "Subindo ate o rosto..."
+          : "Entrando pela cavidade nasal...";
+      ctx.fillText(introText, W / 2, 52);
+    }
+
+    function drawLabShrinkAnimationFrame(frameIndex, blend, progress, now) {
+      const zoom = 1 + progress * 0.09 + Math.sin(progress * Math.PI) * 0.025;
+      const cameraY = 18 + progress * 18;
+      drawLabShrinkFrame(labShrinkFrames[frameIndex], zoom, cameraY);
+      ctx.save();
+      ctx.globalAlpha = blend;
+      drawLabShrinkFrame(labShrinkFrames[frameIndex + 1], zoom + blend * 0.008, cameraY);
+      ctx.restore();
+
+      const energy = Math.sin(blend * Math.PI) * (0.45 + progress * 0.55);
+      if (energy > 0.01) {
+        const glow = ctx.createRadialGradient(W / 2, H / 2 + 20, 30, W / 2, H / 2 + 20, 300);
+        glow.addColorStop(0, "rgba(255, 248, 166, " + (energy * 0.34) + ")");
+        glow.addColorStop(0.55, "rgba(255, 171, 46, " + (energy * 0.13) + ")");
+        glow.addColorStop(1, "rgba(255, 171, 46, 0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 28; i += 1) {
+        const angle = i * 2.37 + now / 520;
+        const radius = 55 + ((i * 31 + now / 18) % 225) * (0.45 + progress * 0.55);
+        const x = W / 2 + Math.cos(angle) * radius;
+        const y = H / 2 + 45 + Math.sin(angle) * radius * 0.72;
+        ctx.fillStyle = i % 3 === 0 ? "rgba(255, 255, 210, 0.75)" : "rgba(255, 190, 55, 0.55)";
+        circle(x, y, 2 + (i % 4));
+      }
+      ctx.restore();
+
+      const vignette = ctx.createRadialGradient(W / 2, H / 2, 180, W / 2, H / 2, 620);
+      vignette.addColorStop(0, "rgba(4, 2, 12, 0)");
+      vignette.addColorStop(1, "rgba(4, 2, 12, 0.42)");
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function drawLabShrinkFrame(frame, zoom = 1, cameraY = 0) {
+      ctx.fillStyle = "#17152a";
+      ctx.fillRect(0, 0, W, H);
+      if (frame && frame.complete && frame.naturalWidth > 0) {
+        const sourceTop = 70;
+        const sourceHeight = 380;
+        const drawW = W * zoom;
+        const drawH = H * zoom;
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(frame, 0, sourceTop, frame.naturalWidth, sourceHeight, W / 2 - drawW / 2, H / 2 - drawH / 2 + cameraY, drawW, drawH);
+        ctx.restore();
+      }
+    }
+
+    function drawEarExit(now) {
+      drawHumanBackdrop();
+      const progress = clamp(transitionTime / 6.2, 0, 1);
+      const t = smoothstep(progress);
+      const x = 610 + (760 - 610) * t;
+      const y = 285 + (465 - 285) * t - Math.sin(t * Math.PI) * 120;
+      const scale = 0.05 + t * 0.85;
+      drawMiniScientist(x, y, now, Math.sin(t * Math.PI * 5) * 0.2, scale);
+
+      ctx.fillStyle = "rgba(8, 2, 10, 0.72)";
+      ctx.fillRect(160, 18, 640, 54);
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 20px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(progress < 0.4 ? "Saindo pela orelha..." : "Retornando ao laboratorio...", W / 2, 52);
+    }
+
+    function drawWinScreen(now) {
+      drawHumanBackdrop();
+      ctx.fillStyle = "rgba(5, 2, 12, 0.62)";
+      ctx.fillRect(0, 0, W, H);
+      drawMiniScientist(760, 500, now, 0, 0.95);
+      ctx.fillStyle = "#fff27a";
+      ctx.font = "bold 112px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("WIN", W / 2, 310);
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 24px 'Courier New', monospace";
+      ctx.fillText("Circuitos reparados e jornada concluida!", W / 2, 372);
+      ctx.font = "bold 17px 'Courier New', monospace";
+      ctx.fillText("ENTER para voltar ao inicio", W / 2, 420);
+    }
+
+    function drawPhase1Background(now) {
+      ctx.fillStyle = "#120607";
+      ctx.fillRect(0, 0, W, H);
+
+      if (nasalCavityImage.complete && nasalCavityImage.naturalWidth > 0) {
+        const scale = Math.max(W / nasalCavityImage.naturalWidth, H / nasalCavityImage.naturalHeight) * 1.02;
+        const imgW = nasalCavityImage.naturalWidth * scale;
+        const imgH = nasalCavityImage.naturalHeight * scale;
+        const drift = Math.sin(now / 800) * 6;
+        ctx.drawImage(nasalCavityImage, W / 2 - imgW / 2 + drift, H / 2 - imgH / 2, imgW, imgH);
+        ctx.fillStyle = "rgba(20, 3, 7, 0.18)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = "#ff8558";
+        ctx.fillRect(0, 184, W, 316);
+      }
+    }
+
+    function drawPhase2Background(now) {
+      ctx.fillStyle = "#17040a";
+      ctx.fillRect(0, 0, W, H);
+
+      if (alveoliImage.complete && alveoliImage.naturalWidth > 0) {
+        const breath = 1.015 + Math.sin(now / 950) * 0.015;
+        const scale = Math.max(W / alveoliImage.naturalWidth, H / alveoliImage.naturalHeight) * breath;
+        const imgW = alveoliImage.naturalWidth * scale;
+        const imgH = alveoliImage.naturalHeight * scale;
+        const driftX = Math.sin(now / 1300) * 8;
+        const driftY = Math.cos(now / 1500) * 5;
+        ctx.drawImage(alveoliImage, W / 2 - imgW / 2 + driftX, H / 2 - imgH / 2 + driftY, imgW, imgH);
+        ctx.fillStyle = "rgba(22, 1, 4, 0.18)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = "#631014";
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    function drawAlveolusTree(x, baseY, height, now) {
+      ctx.fillStyle = "#312334";
+      ctx.fillRect(x - 16, baseY - height + 82, 32, height);
+      ctx.fillStyle = "#851114";
+      circle(x, baseY - height + 48, 70);
+      circle(x - 38, baseY - height + 76, 47);
+      circle(x + 38, baseY - height + 76, 47);
+      ctx.fillStyle = "#c51d1f";
+      circle(x - 18, baseY - height + 34, 18);
+      circle(x + 20, baseY - height + 65, 22);
+      ctx.fillStyle = "#ffb462";
+      for (let i = 0; i < 5; i += 1) {
+        const px = x - 50 + i * 25 + Math.sin(now / 400 + i) * 4;
+        const py = baseY - height + 30 + (i % 3) * 34;
+        ctx.fillRect(px, py, 12, 12);
+      }
+    }
+
+    function drawTracheaScene(now, reverse) {
+      ctx.fillStyle = "#160509";
+      ctx.fillRect(0, 0, W, H);
+
+      if (tracheaImage.complete && tracheaImage.naturalWidth > 0) {
+        const scale = Math.max(W / tracheaImage.naturalWidth, H / tracheaImage.naturalHeight) * 1.08;
+        const imgW = tracheaImage.naturalWidth * scale;
+        const imgH = tracheaImage.naturalHeight * scale;
+        const drift = Math.sin(now / 600) * 10;
+        ctx.drawImage(tracheaImage, W / 2 - imgW / 2 + drift, H / 2 - imgH / 2, imgW, imgH);
+        ctx.fillStyle = "rgba(10, 2, 5, 0.28)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.strokeStyle = "#7c2730";
+        ctx.lineWidth = 118;
+        ctx.beginPath();
+        if (reverse) {
+          ctx.moveTo(470, 710);
+          ctx.bezierCurveTo(390, 575, 440, 485, 620, 390);
+          ctx.bezierCurveTo(900, 245, 760, 130, 835, -60);
+        } else {
+          ctx.moveTo(835, -60);
+          ctx.bezierCurveTo(760, 130, 900, 245, 620, 390);
+          ctx.bezierCurveTo(440, 485, 390, 575, 470, 710);
+        }
+        ctx.stroke();
+      }
+
+    }
+
+    function drawTransition(now) {
+      const t = smoothstep(clamp(transitionTime / 4.2, 0, 1));
+      drawTracheaScene(now, false);
+
+      const sx = cubic(650, 615, 545, 475, t);
+      const sy = cubic(230, 330, 510, 650, t);
+      drawMiniScientist(sx, sy, now, 0, 0.55 + t * 0.45);
+
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 26px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Escorregando pela traqueia", W / 2, 72);
+    }
+
+    function drawReturnTransition(now) {
+      const t = smoothstep(clamp(transitionTime / 4.1, 0, 1));
+      drawTracheaScene(now, true);
+
+      const pull = Math.sin(now / 70) * 18 * (1 - t);
+      const sx = cubic(505, 535, 590, 640, t) + pull;
+      const sy = cubic(650, 560, 390, 255, t);
+      drawMiniScientist(sx, sy, now, 0, 1 - t * 0.45);
+
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 26px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Aspirado para cima pela traqueia", W / 2, 72);
+    }
+
+    function drawEsophagusDrop(now) {
+      const t = smoothstep(clamp(transitionTime / 3.4, 0, 1));
+      ctx.fillStyle = "#1a0609";
+      ctx.fillRect(0, 0, W, H);
+
+      if (esophagusImage.complete && esophagusImage.naturalWidth > 0) {
+        const scale = Math.max(W / esophagusImage.naturalWidth, H / esophagusImage.naturalHeight) * 1.08;
+        const imgW = esophagusImage.naturalWidth * scale;
+        const imgH = esophagusImage.naturalHeight * scale;
+        ctx.drawImage(esophagusImage, W / 2 - imgW / 2, H / 2 - imgH / 2, imgW, imgH);
+        ctx.fillStyle = "rgba(13, 3, 7, 0.24)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.strokeStyle = "#6d2430";
+        ctx.lineWidth = 145;
+        ctx.beginPath();
+        ctx.moveTo(W / 2, -80);
+        ctx.bezierCurveTo(380, 120, 560, 260, 475, 420);
+        ctx.bezierCurveTo(395, 530, 500, 610, 520, 720);
+        ctx.stroke();
+      }
+
+      const sx = cubic(650, 610, 545, 505, t);
+      const sy = cubic(215, 330, 520, 700, t);
+      drawMiniScientist(sx, sy, now, 0, 0.55 + t * 0.45);
+
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 26px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Descendo pelo esofago com ondas peristalticas", W / 2, 72);
+    }
+
+    function drawPhase3Background(now) {
+      ctx.fillStyle = "#2c0610";
+      ctx.fillRect(0, 0, W, H);
+
+      if (gastricJuiceImage.complete && gastricJuiceImage.naturalWidth > 0) {
+        const waveScale = 1.02 + Math.sin(now / 900) * 0.01;
+        const scale = Math.max(W / gastricJuiceImage.naturalWidth, H / gastricJuiceImage.naturalHeight) * waveScale;
+        const imgW = gastricJuiceImage.naturalWidth * scale;
+        const imgH = gastricJuiceImage.naturalHeight * scale;
+        const driftX = Math.sin(now / 1200) * 8;
+        const driftY = Math.cos(now / 1000) * 5;
+        ctx.drawImage(gastricJuiceImage, W / 2 - imgW / 2 + driftX, H / 2 - imgH / 2 + driftY, imgW, imgH);
+        drawGastricLiquidMotion(now);
+      } else {
+        ctx.fillStyle = "#8e1920";
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "#d6b23a";
+        ctx.fillRect(145, 510, 680, 130);
+      }
+
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 17px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Nao caia no suco gastrico", W / 2, 82);
+      ctx.font = "bold 14px 'Courier New', monospace";
+      ctx.fillText("Mucosa gastrica, dobras musculares e lago acido", W / 2, 105);
+    }
+
+    function drawGastricLiquidMotion(now) {
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.fillStyle = "#ffd12d";
+      ctx.beginPath();
+      ctx.moveTo(145, 510);
+      for (let x = 145; x <= 825; x += 34) {
+        ctx.lineTo(x, 510 + Math.sin(x / 42 + now / 180) * 9 + Math.sin(x / 25 + now / 310) * 5);
+      }
+      ctx.lineTo(825, H);
+      ctx.lineTo(145, H);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255, 245, 160, 0.55)";
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 4; i += 1) {
+        const y = 526 + i * 28 + Math.sin(now / 210 + i) * 7;
+        ctx.beginPath();
+        ctx.moveTo(160, y);
+        for (let x = 160; x <= 810; x += 46) {
+          ctx.lineTo(x, y + Math.sin(x / 34 + now / 220 + i) * 8);
+        }
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < 28; i += 1) {
+        const x = 165 + ((i * 73 + now / 18) % 650);
+        const y = 618 - ((now / 12 + i * 41) % 126);
+        const r = 3 + (i % 5);
+        ctx.globalAlpha = 0.28 + (i % 3) * 0.08;
+        ctx.strokeStyle = "#fff3a6";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y + Math.sin(now / 160 + i) * 5, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawGastricSideHazards(now) {
+      drawGastricAcidFall(145, 448, 42, 180, now, 0);
+      drawGastricAcidFall(800, 438, 38, 190, now, 2.2);
+    }
+
+    function drawGastricAcidFall(x, y, width, height, now, phaseOffset) {
+      ctx.save();
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = "#f7c21e";
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let yy = y; yy <= y + height; yy += 18) {
+        ctx.lineTo(x + Math.sin(yy / 22 + now / 130 + phaseOffset) * 9, yy);
+      }
+      ctx.lineTo(x + width + Math.sin(now / 110 + phaseOffset) * 8, y + height);
+      for (let yy = y + height; yy >= y; yy -= 18) {
+        ctx.lineTo(x + width + Math.sin(yy / 24 + now / 150 + phaseOffset) * 8, yy);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255, 247, 156, 0.7)";
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 4; i += 1) {
+        const lx = x + 8 + i * (width / 4) + Math.sin(now / 120 + i + phaseOffset) * 5;
+        ctx.beginPath();
+        ctx.moveTo(lx, y + 4);
+        for (let yy = y + 4; yy <= y + height - 8; yy += 20) {
+          ctx.lineTo(lx + Math.sin(yy / 20 + now / 100 + i) * 6, yy);
+        }
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < 8; i += 1) {
+        const bx = x + 6 + ((i * 17 + now / 30) % Math.max(18, width - 12));
+        const by = y + height - ((now / 10 + i * 31) % height);
+        ctx.globalAlpha = 0.36;
+        ctx.strokeStyle = "#fff4a8";
+        ctx.beginPath();
+        ctx.arc(bx, by, 3 + (i % 3), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawAbsorption(now) {
+      const t = clamp(transitionTime / 3.8, 0, 1);
+      const pulse = Math.sin(now / 420) * 4;
+      const glow = ctx.createRadialGradient(W / 2, 400, 40, W / 2, 400, 560);
+      glow.addColorStop(0, "#ff9a69");
+      glow.addColorStop(0.48, "#a92d38");
+      glow.addColorStop(1, "#310712");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.strokeStyle = "rgba(92, 9, 20, 0.48)";
+      ctx.lineWidth = 18;
+      for (let i = 0; i < 7; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-80, 95 + i * 63);
+        ctx.bezierCurveTo(180, 25 + i * 72, 350, 155 + i * 45, 600, 80 + i * 68);
+        ctx.bezierCurveTo(760, 30 + i * 78, 885, 150 + i * 55, 1040, 85 + i * 70);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#731827";
+      ctx.beginPath();
+      ctx.moveTo(0, 425);
+      for (let x = 0; x <= W; x += 48) {
+        ctx.lineTo(x, 418 + Math.sin(x / 66 + now / 620) * 12);
+      }
+      ctx.lineTo(W, H);
+      ctx.lineTo(0, H);
+      ctx.fill();
+
+      for (let i = 0; i < 13; i += 1) {
+        const x = 35 + i * 75;
+        const sway = Math.sin(now / 520 + i) * 7;
+        const h = 130 + (i % 4) * 24;
+        ctx.fillStyle = "#d85b56";
+        ctx.beginPath();
+        ctx.moveTo(x - 31, 520);
+        ctx.bezierCurveTo(x - 39, 455, x - 22 + sway, 420 - h * 0.45, x + sway, 520 - h);
+        ctx.bezierCurveTo(x + 25 + sway, 420 - h * 0.45, x + 38, 455, x + 31, 520);
+        ctx.fill();
+        ctx.strokeStyle = "#ff9a7a";
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        ctx.strokeStyle = "#8d1b2d";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(x, 510);
+        ctx.quadraticCurveTo(x + sway * 0.5, 465, x + sway, 520 - h + 18);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255, 207, 166, 0.72)";
+        circle(x + sway - 8, 520 - h + 24, 6);
+      }
+
+      ctx.fillStyle = "#58101f";
+      ctx.fillRect(0, 530, W, 110);
+      ctx.strokeStyle = "#e94b52";
+      ctx.lineWidth = 32;
+      ctx.beginPath();
+      ctx.moveTo(-50, 598);
+      ctx.bezierCurveTo(170, 530, 330, 640, 520, 580);
+      ctx.bezierCurveTo(700, 525, 820, 635, 1010, 570);
+      ctx.stroke();
+      ctx.strokeStyle = "#ff8580";
+      ctx.lineWidth = 5;
+      ctx.stroke();
+
+      ctx.fillStyle = "#d93442";
+      for (let i = 0; i < 12; i += 1) {
+        const bx = 40 + ((i * 91 + now / 14) % 900);
+        const by = 570 + Math.sin(i * 1.8 + now / 300) * 20;
+        ctx.save();
+        ctx.translate(bx, by);
+        ctx.rotate(Math.sin(i + now / 500) * 0.5);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 18, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      const sx = cubic(840, 735, 610, 510, t);
+      const sy = cubic(350, 395, 455, 575, t);
+      if (t < 0.45) {
+        ctx.globalAlpha = 1 - t * 1.5;
+        drawMiniScientist(sx, sy, now);
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.fillStyle = "#ffd86b";
+      for (let i = 0; i < 24; i += 1) {
+        const p = clamp((t - 0.25) / 0.75, 0, 1);
+        const angle = i * 0.75 + now / 260;
+        const px = sx + Math.cos(angle) * (18 + p * 120) + p * (500 - sx);
+        const py = sy + Math.sin(angle) * (18 + p * 70) + p * (585 - sy);
+        circle(px, py, 4 + (i % 4));
+      }
+
+      ctx.fillStyle = "#ffe477";
+      for (let i = 0; i < 16; i += 1) {
+        const angle = i * 0.9 + now / 220;
+        circle(500 + Math.cos(angle) * (30 + t * 160), 548 + pulse + Math.sin(angle) * (18 + t * 45), 4);
+      }
+
+      ctx.fillStyle = "rgba(16, 2, 8, 0.48)";
+      ctx.fillRect(112, 22, 736, 72);
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 24px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("O cientista vira particulas de nutriente e entra no sangue", W / 2, 75);
+    }
+
+    function drawBloodBackground(now) {
+      ctx.fillStyle = "#5f0711";
+      ctx.fillRect(0, 0, W, H);
+      if (bloodImage.complete && bloodImage.naturalWidth > 0) {
+        const scale = Math.max(W / bloodImage.naturalWidth, H / bloodImage.naturalHeight) * 1.02;
+        const imgW = bloodImage.naturalWidth * scale;
+        const imgH = bloodImage.naturalHeight * scale;
+        const drift = Math.sin(now / 650 + bloodSegment) * 8;
+        ctx.drawImage(bloodImage, W / 2 - imgW / 2 + drift, H / 2 - imgH / 2, imgW, imgH);
+        ctx.fillStyle = "rgba(45, 0, 3, 0.12)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = bloodSegment % 2 ? "#8c1019" : "#b41d25";
+        ctx.fillRect(0, 120, W, 420);
+      }
+
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 19px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Trecho " + bloodSegment + " de 3 ate o coracao", W / 2, 76);
+    }
+
+    function drawBloodTransition(now) {
+      const t = clamp(transitionTime / 1.8, 0, 1);
+      ctx.fillStyle = "#46070d";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#a91520";
+      ctx.beginPath();
+      ctx.ellipse(W / 2, H / 2, 520, 190 + Math.sin(now / 180) * 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawRaft(now, 120 + t * 780, 420 + Math.sin(t * Math.PI) * 42);
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 24px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Entrando em outro vaso sanguineo...", W / 2, 78);
+    }
+
+    function drawHeartIntro(now) {
+      const beat = 1 + Math.sin(now / 155) * 0.065;
+      ctx.fillStyle = "#16050a";
+      ctx.fillRect(0, 0, W, H);
+
+      if (heartImage.complete && heartImage.naturalWidth > 0) {
+        const scale = Math.max(W / heartImage.naturalWidth, H / heartImage.naturalHeight) * beat;
+        const imgW = heartImage.naturalWidth * scale;
+        const imgH = heartImage.naturalHeight * scale;
+        ctx.drawImage(heartImage, W / 2 - imgW / 2, H / 2 - imgH / 2, imgW, imgH);
+        ctx.fillStyle = "rgba(12, 2, 5, 0.2)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.save();
+        ctx.translate(W / 2, H / 2 + 10);
+        ctx.scale(beat, beat);
+        ctx.fillStyle = "#8e1420";
+        ctx.beginPath();
+        ctx.moveTo(0, 190);
+        ctx.bezierCurveTo(-220, 60, -210, -155, -60, -145);
+        ctx.bezierCurveTo(-15, -225, 150, -190, 170, -70);
+        ctx.bezierCurveTo(205, 75, 95, 145, 0, 190);
+        ctx.fill();
+        ctx.fillStyle = "#c02b34";
+        ctx.beginPath();
+        ctx.ellipse(-70, -45, 92, 128, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(75, -35, 92, 122, 0.32, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#f06b62";
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(-15, 150);
+        ctx.bezierCurveTo(-55, 40, -35, -50, -80, -142);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 25px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("O coracao pulsa antes da entrada no tecido muscular", W / 2, 72);
+    }
+
+    function drawAortaTransition(now) {
+      const t = clamp(transitionTime / 4.2, 0, 1);
+      ctx.fillStyle = "#2b0610";
+      ctx.fillRect(0, 0, W, H);
+
+      if (aortaImage.complete && aortaImage.naturalWidth > 0) {
+        const scale = Math.max(W / aortaImage.naturalWidth, H / aortaImage.naturalHeight) * 1.03;
+        const imgW = aortaImage.naturalWidth * scale;
+        const imgH = aortaImage.naturalHeight * scale;
+        const drift = Math.sin(now / 680) * 8;
+        ctx.drawImage(aortaImage, W / 2 - imgW / 2 + drift, H / 2 - imgH / 2, imgW, imgH);
+        ctx.fillStyle = "rgba(25, 3, 5, 0.16)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.strokeStyle = "#b91f2f";
+        ctx.lineWidth = 118;
+        ctx.beginPath();
+        ctx.moveTo(500, 700);
+        ctx.bezierCurveTo(360, 505, 600, 360, 455, 210);
+        ctx.bezierCurveTo(330, 75, 560, 30, 720, -55);
+        ctx.stroke();
+      }
+
+      const travel = smoothstep(t);
+      const sx = cubic(445, 430, 500, 585, travel);
+      const sy = cubic(700, 520, 345, 230, travel);
+      const depthScale = 1 - travel * 0.42;
+      drawMiniRaft(sx, sy + 52 * depthScale, depthScale, now);
+      drawMiniScientist(sx, sy - 46 * depthScale, now, 0, depthScale);
+
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 24px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Subindo pela aorta ate o cerebro...", W / 2, 76);
+    }
+
+    function drawBrainArrivalScene(now) {
+      ctx.fillStyle = "#1d0808";
+      ctx.fillRect(0, 0, W, H);
+
+      if (brainArrivalImage.complete && brainArrivalImage.naturalWidth > 0) {
+        ctx.drawImage(brainArrivalImage, 0, 0, W, H);
+        ctx.fillStyle = "rgba(20, 4, 8, 0.12)";
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = "#e1a08f";
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      brainRepairNodes.forEach((node, index) => drawBrainRepairNode(node, index, now));
+      drawBrainArrivalScientist(now);
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 24px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      const left = brainRepairNodes.filter((node) => !node.repaired).length;
+      ctx.fillText("Neuronios para reparar: " + left, W / 2, 76);
+    }
+
+    function drawBrainRepairNode(node, index, now) {
+      if (node.repaired) return;
+
+      const sprite = brainNeuronSprites[node.sprite];
+      ctx.save();
+      ctx.translate(node.x, node.y + Math.sin(now / 360 + index) * 5);
+      const pulse = 1 + Math.sin(now / 240 + index) * 0.05;
+      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+        const h = 205 * pulse;
+        const w = h * (sprite.naturalWidth / sprite.naturalHeight);
+        ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
+      } else {
+        ctx.fillStyle = "#3e88d8";
+        circle(0, 0, 34 * pulse);
+      }
+      ctx.restore();
+    }
+
+    function drawNeuronImpulseGlow(node, now) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const spark = 0.8 + Math.sin(now / 110) * 0.2;
+      ctx.strokeStyle = "rgba(255, 232, 66, 0.92)";
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 5;
+      const branches = 12;
+      for (let i = 0; i < branches; i += 1) {
+        const angle = -Math.PI / 2 + (i - branches / 2) * 0.42 + Math.sin(now / 310 + i) * 0.08;
+        const len = 44 + (i % 4) * 13 + Math.sin(now / 150 + i * 1.7) * 7;
+        const midX = node.x + Math.cos(angle) * len * 0.55 + Math.sin(i * 2.1) * 10;
+        const midY = node.y + Math.sin(angle) * len * 0.55 + Math.cos(i * 1.6) * 9;
+        const endX = node.x + Math.cos(angle) * len;
+        const endY = node.y + Math.sin(angle) * len;
+        ctx.globalAlpha = 0.55 + spark * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(node.x, node.y);
+        ctx.quadraticCurveTo(midX, midY, endX, endY);
+        ctx.stroke();
+
+        const branchAngle = angle + (i % 2 === 0 ? 0.65 : -0.65);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(midX, midY);
+        ctx.lineTo(midX + Math.cos(branchAngle) * 24, midY + Math.sin(branchAngle) * 24);
+        ctx.stroke();
+        ctx.lineWidth = 5;
+      }
+      ctx.restore();
+    }
+
+    function drawBrainArrivalScientist(now) {
+      drawScientist(scientist, now);
+    }
+
+    function drawBrainBackground(now) {
+      ctx.fillStyle = "#071123";
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = "rgba(84, 171, 255, 0.18)";
+      ctx.lineWidth = 5;
+      for (let i = 0; i < 16; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-30, 80 + i * 38);
+        ctx.bezierCurveTo(190, 35 + i * 42, 400, 135 + i * 16, 1000, 75 + i * 41);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#0b1d3a";
+      ctx.fillRect(0, 510, W, 130);
+      ctx.fillStyle = "#102b54";
+      ctx.fillRect(0, 550, W, 90);
+
+      if (brainStage === "diagnosis") {
+        const scanX = 80 + (neuralScan % 3.2) / 3.2 * 800;
+        ctx.fillStyle = "rgba(118, 220, 255, 0.18)";
+        ctx.fillRect(scanX - 40, 115, 80, 420);
+        ctx.strokeStyle = "#76dcff";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(scanX - 40, 115, 80, 420);
+      }
+
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 18px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      const label = brainStage === "diagnosis" ? "Diagnostico neural" : brainStage === "collect" ? "Coleta de materiais" : brainStage === "repair" ? "Reparo da mielina" : brainStage === "test" ? "Teste neural" : "Circuito restaurado";
+      ctx.fillText("Fase 5: Cerebro - " + label, W / 2, 70);
+      ctx.font = "bold 15px 'Courier New', monospace";
+      const help = brainStage === "diagnosis"
+        ? "Scanner procurando axonios sem mielina"
+        : brainStage === "collect"
+          ? "Colete materia-prima para reconstruir a cobertura dos axonios"
+          : brainStage === "repair"
+            ? "Clique nos axonios vermelhos para enrolar novas camadas de mielina"
+            : brainStage === "test"
+              ? "Impulso eletrico testando a velocidade do circuito reparado"
+              : "Circuito neural reparado";
+      ctx.fillText(help, W / 2, 94);
+    }
+
+    function drawHeartBackground(now) {
+      const shakeX = screenShake > 0 ? Math.sin(now / 28) * 8 : 0;
+      const shakeY = screenShake > 0 ? Math.cos(now / 34) * 5 : 0;
+      const pulse = 1 + Math.sin(now / 170) * 0.018;
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
+      ctx.scale(pulse, pulse);
+      ctx.translate((W - W * pulse) / 2, (H - H * pulse) / 2);
+      ctx.fillStyle = "#2b0610";
+      ctx.fillRect(-20, -20, W + 40, H + 40);
+
+      if (heartBattleImage.complete && heartBattleImage.naturalWidth > 0) {
+        const scale = Math.max((W + 40) / heartBattleImage.naturalWidth, (H + 40) / heartBattleImage.naturalHeight);
+        const imgW = heartBattleImage.naturalWidth * scale;
+        const imgH = heartBattleImage.naturalHeight * scale;
+        ctx.drawImage(heartBattleImage, W / 2 - imgW / 2, H / 2 - imgH / 2, imgW, imgH);
+      } else {
+        ctx.fillStyle = "#7d1421";
+        ctx.fillRect(-20, -20, W + 40, H + 40);
+      }
+
+      ctx.restore();
+    }
+
+    function drawExitTube() {
+      ctx.fillStyle = "#391018";
+      ctx.fillRect(925, 292, 35, 165);
+      ctx.fillStyle = "#e64833";
+      ctx.fillRect(914, 320, 46, 88);
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 16px 'Courier New', monospace";
+      ctx.textAlign = "right";
+      if (phase1Viruses.every((virus) => !virus.alive)) {
+        ctx.fillText("SAIDA", 910, 375);
+      }
+    }
+
+    function drawScientist(p, now) {
+      const bounce = Math.sin(p.step) * 3;
+      const x = p.x;
+      const y = p.y + bounce;
+      const usesBeakerSprite = phase === 1 || phase === 2 || phase === 5;
+      const isWalking = p.step > 0.05;
+
+      ctx.save();
+      ctx.translate(x + p.w / 2, y + p.h / 2);
+      ctx.scale(p.facing, 1);
+      ctx.translate(-p.w / 2, -p.h / 2);
+
+      const walkFrame = scientistWalkImages[Math.floor(p.step) % scientistWalkImages.length];
+      const animatedSprite = isWalking ? walkFrame : scientistIdleImage;
+      const sprite = animatedSprite.complete && animatedSprite.naturalWidth > 0
+        ? animatedSprite
+        : usesBeakerSprite ? scientistBeakerImage : scientistImage;
+      if (sprite.complete && sprite.naturalWidth > 0) {
+        const drawH = animatedSprite === sprite ? 148 : usesBeakerSprite ? 160 : 146;
+        const drawW = drawH * (sprite.naturalWidth / sprite.naturalHeight);
+        const drawX = p.w / 2 - drawW / 2;
+        const drawY = animatedSprite === sprite ? -4 : usesBeakerSprite ? -12 : -4;
+        ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+
+        ctx.restore();
+        return;
+      }
+
+      ctx.fillStyle = "#1b1314";
+      ctx.fillRect(18, 126, 15, 13);
+      ctx.fillRect(48, 126, 15, 13);
+      ctx.fillStyle = "#f6f0e8";
+      ctx.fillRect(17, 55, 49, 76);
+      ctx.fillStyle = "#163b4c";
+      ctx.fillRect(27, 58, 10, 67);
+      ctx.fillRect(46, 58, 8, 67);
+      ctx.fillStyle = "#22252a";
+      ctx.fillRect(10, 83, 20, 34);
+      ctx.fillRect(63, 81, 10, 39);
+      ctx.fillStyle = "#633329";
+      ctx.fillRect(26, 24, 33, 31);
+      ctx.fillRect(18, 38, 9, 10);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(22, 14, 38, 16);
+      ctx.fillRect(16, 28, 51, 12);
+      ctx.fillStyle = "#0c1118";
+      ctx.fillRect(19, 40, 20, 15);
+      ctx.fillRect(44, 40, 19, 15);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(24, 44, 8, 5);
+      ctx.fillRect(49, 44, 7, 5);
+      ctx.fillStyle = "#e9f6fb";
+      ctx.fillRect(67, 74, 13, 28);
+      ctx.fillStyle = "#4fc2df";
+      ctx.fillRect(72, 87, 15, 22);
+      ctx.fillStyle = "#122b38";
+      ctx.fillRect(75, 81, 9, 6);
+      ctx.fillStyle = "#72d8ef";
+      ctx.fillRect(83, 62 + Math.sin(now / 120) * 3, 4, 4);
+      ctx.fillRect(90, 51 + Math.sin(now / 150) * 4, 3, 3);
+      ctx.fillRect(86, 43 + Math.sin(now / 180) * 5, 3, 3);
+
+      ctx.restore();
+    }
+
+    function drawTubeMotionTrail(x, y, direction, now, color) {
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      for (let i = 0; i < 6; i += 1) {
+        const offset = i * 26;
+        ctx.beginPath();
+        ctx.moveTo(x - 46 + Math.sin(now / 90 + i) * 8, y + direction * offset);
+        ctx.lineTo(x + 38 + Math.cos(now / 110 + i) * 8, y + direction * (offset + 18));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawSuctionLines(x, y, now) {
+      ctx.save();
+      ctx.globalAlpha = 0.42;
+      ctx.strokeStyle = "#d8f4ff";
+      ctx.lineWidth = 6;
+      for (let i = 0; i < 9; i += 1) {
+        const drift = Math.sin(now / 80 + i) * 20;
+        ctx.beginPath();
+        ctx.moveTo(x - 150 + i * 38, y + 150 + drift);
+        ctx.bezierCurveTo(x - 95 + i * 22, y + 70, x - 35 + i * 8, y + 25, x, y - 35);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawMiniScientist(x, y, now, angle = Math.sin(now / 120) * 0.25, scale = 1) {
+      if (scientistBeakerImage.complete && scientistBeakerImage.naturalWidth > 0) {
+        const size = 108 * scale;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.drawImage(scientistBeakerImage, -size / 2, -size * 0.82, size, size * (scientistBeakerImage.naturalHeight / scientistBeakerImage.naturalWidth));
+        ctx.restore();
+        return;
+      }
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.scale(0.62 * scale, 0.62 * scale);
+      ctx.fillStyle = "#f6f0e8";
+      ctx.fillRect(-16, -16, 32, 45);
+      ctx.fillStyle = "#633329";
+      circle(0, -30, 16);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(-18, -45, 36, 12);
+      ctx.fillStyle = "#4fc2df";
+      ctx.fillRect(20, 2, 13, 22);
+      ctx.restore();
+    }
+
+    function drawMucus(blob, now) {
+      const wobble = Math.sin(now / 260 + blob.phase) * 3;
+      ctx.fillStyle = "#071227";
+      circle(blob.x - 5, blob.y + 5, blob.r + 5);
+      ctx.fillStyle = "#1b4f57";
+      circle(blob.x, blob.y, blob.r + wobble);
+      ctx.fillStyle = "#398d85";
+      circle(blob.x - blob.r * 0.25, blob.y - blob.r * 0.28, Math.max(3, blob.r * 0.28));
+      ctx.fillStyle = "#0a2237";
+      circle(blob.x - blob.r * 1.35, blob.y - 3, blob.r * 0.42);
+      circle(blob.x + blob.r * 1.28, blob.y + 8, blob.r * 0.36);
+      circle(blob.x - 6, blob.y + blob.r * 1.22, blob.r * 0.34);
+    }
+
+    function drawVirus(virus, now) {
+      ctx.save();
+      ctx.translate(virus.x, virus.y);
+      ctx.rotate(Math.sin(virus.phase) * 0.14);
+
+      for (let i = 0; i < 10; i += 1) {
+        const angle = (Math.PI * 2 * i) / 10 + virus.phase * 0.08;
+        const sx = Math.cos(angle) * (virus.r + 10);
+        const sy = Math.sin(angle) * (virus.r + 10);
+        ctx.strokeStyle = "#2a1328";
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * virus.r * 0.76, Math.sin(angle) * virus.r * 0.76);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+        ctx.fillStyle = virus.spike;
+        circle(sx, sy, 7);
+      }
+
+      ctx.fillStyle = "#1b1632";
+      circle(3, 5, virus.r + 3);
+      ctx.fillStyle = virus.color;
+      circle(0, 0, virus.r);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+      circle(-10, -10, 4);
+      circle(8, -14, 3);
+      ctx.fillStyle = virus.spike;
+      circle(0, 1, 8);
+      ctx.fillStyle = "#25354f";
+      circle(-11, 10, 4);
+      circle(14, 9, 3);
+
+      ctx.restore();
+    }
+
+    function drawTbEnemy(enemy, now) {
+      ctx.save();
+      ctx.translate(enemy.x, enemy.y);
+      ctx.rotate(Math.sin(enemy.phase) * 0.18);
+      const sprite = tbSprites[enemy.spriteIndex % tbSprites.length];
+      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+        const pulse = 1 + Math.sin(now / 210 + enemy.phase) * 0.06;
+        const size = 92 * pulse;
+        ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+      } else {
+        ctx.fillStyle = "#5a2719";
+        ctx.fillRect(-34, -10, 68, 20);
+        ctx.fillStyle = "#bf7d42";
+        ctx.fillRect(-27, -15, 54, 30);
+        ctx.fillStyle = "#f1b263";
+        ctx.fillRect(-17, -6, 12, 12);
+        ctx.fillRect(6, -7, 12, 12);
+        ctx.fillStyle = "#2b120d";
+        ctx.fillRect(-30, -18, 9, 8);
+        ctx.fillRect(22, 10, 9, 8);
+      }
+      ctx.restore();
+    }
+
+    function drawAntibiotic(shot) {
+      ctx.fillStyle = "#102d55";
+      circle(shot.x + 3, shot.y + 3, shot.r + 2);
+      ctx.fillStyle = shot.kind === "aspirin" ? "#ffffff" : "#45cfff";
+      circle(shot.x, shot.y, shot.r);
+      ctx.fillStyle = shot.kind === "aspirin" ? "#b9e6ff" : "#b9f4ff";
+      circle(shot.x - 3, shot.y - 3, 3);
+    }
+
+    function drawGrenade(grenade) {
+      ctx.save();
+      ctx.translate(grenade.x, grenade.y);
+      ctx.rotate(grenade.spin);
+      ctx.fillStyle = grenade.kind === "monocyte" ? "#d7ecff" : "#dff7ff";
+      circle(0, 0, grenade.r);
+      ctx.fillStyle = grenade.kind === "monocyte" ? "#7d9fc8" : "#7bb7d6";
+      circle(-5, -5, 4);
+      ctx.fillStyle = "#d24b55";
+      ctx.fillRect(7, -12, 7, 7);
+      ctx.restore();
+    }
+
+    function drawLeucocyte(item, now) {
+      ctx.fillStyle = "#113044";
+      circle(item.x + 4, item.y + 5, item.r + 4);
+      ctx.fillStyle = "#e8f8ff";
+      circle(item.x, item.y + Math.sin(now / 250 + item.x) * 3, item.r);
+      ctx.fillStyle = "#8ecae6";
+      circle(item.x - 5, item.y - 3, 5);
+      circle(item.x + 4, item.y + 5, 4);
+    }
+
+    function drawSporePlatform(spore, now) {
+      const y = spore.y + Math.sin(now / 360 + spore.phase) * 5;
+      ctx.fillStyle = "#4c3321";
+      circle(spore.x + 5, y + 7, spore.r + 5);
+      ctx.fillStyle = "#b37b3e";
+      ctx.beginPath();
+      ctx.ellipse(spore.x, y, spore.r * 1.25, spore.r * 0.72, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#e0b767";
+      ctx.beginPath();
+      ctx.ellipse(spore.x - 9, y - 6, spore.r * 0.52, spore.r * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#6e4929";
+      ctx.fillRect(spore.x - spore.r * 0.75, y + 2, spore.r * 1.5, 8);
+    }
+
+    function drawRaft(now, overrideX, overrideY) {
+      const x = overrideX ?? raft.x;
+      const y = overrideY ?? raft.y;
+      ctx.fillStyle = "#501018";
+      ctx.beginPath();
+      ctx.ellipse(x + 4, y + 8, 78, 43, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#d82f35";
+      ctx.beginPath();
+      ctx.ellipse(x, y, 76, 42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f36a5f";
+      ctx.beginPath();
+      ctx.ellipse(x - 16, y - 10, 34, 15, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#74131b";
+      ctx.beginPath();
+      ctx.ellipse(x + 12, y + 4, 34, 17, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      if (!onRaft && phase === 4) {
+        ctx.fillStyle = "#fff1d2";
+        ctx.font = "bold 16px 'Courier New', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("SHIFT", x, y - 58);
+      }
+    }
+
+    function drawMiniRaft(x, y, scale, now) {
+      ctx.save();
+      ctx.translate(x, y + Math.sin(now / 260) * 3 * scale);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#501018";
+      ctx.beginPath();
+      ctx.ellipse(4, 8, 78, 43, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#d82f35";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 76, 42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f36a5f";
+      ctx.beginPath();
+      ctx.ellipse(-16, -10, 34, 15, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#74131b";
+      ctx.beginPath();
+      ctx.ellipse(12, 4, 34, 17, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawClot(clot, now) {
+      ctx.fillStyle = "#451018";
+      circle(clot.x + 6, clot.y + 7, clot.r + 8);
+      ctx.fillStyle = "#7a2630";
+      circle(clot.x, clot.y, clot.r);
+      ctx.fillStyle = "#b45a61";
+      for (let i = 0; i < 8; i += 1) {
+        circle(clot.x + Math.cos(i * 0.8 + now / 500) * clot.r * 0.55, clot.y + Math.sin(i * 0.8) * clot.r * 0.45, 9);
+      }
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 13px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("COAGULO", clot.x, clot.y - clot.r - 16);
+    }
+
+    function drawMonocyte(item, now) {
+      ctx.fillStyle = "#172846";
+      circle(item.x + 4, item.y + 4, item.r + 5);
+      ctx.fillStyle = "#d7ecff";
+      circle(item.x, item.y + Math.sin(now / 240 + item.x) * 5, item.r);
+      ctx.fillStyle = "#7d9fc8";
+      ctx.beginPath();
+      ctx.ellipse(item.x - 3, item.y, 11, 7, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawMacrophage(mac, now) {
+      if (macrophageImage.complete && macrophageImage.naturalWidth > 0) {
+        const size = mac.r * 3.8 + Math.sin(now / 180 + mac.phase) * 5;
+        ctx.save();
+        ctx.translate(mac.x, mac.y);
+        ctx.rotate(Math.sin(now / 420 + mac.phase) * 0.18);
+        ctx.drawImage(macrophageImage, -size / 2, -size / 2, size, size);
+        ctx.restore();
+        return;
+      }
+
+      ctx.fillStyle = "#1e2745";
+      circle(mac.x + 5, mac.y + 6, mac.r + 6);
+      ctx.fillStyle = "#d8f0ff";
+      circle(mac.x, mac.y + Math.sin(now / 180 + mac.phase) * 4, mac.r);
+      ctx.fillStyle = "#89a9d5";
+      circle(mac.x - 7, mac.y - 2, 8);
+      circle(mac.x + 8, mac.y + 5, 7);
+      ctx.strokeStyle = "#d8f0ff";
+      ctx.lineWidth = 7;
+      for (let i = 0; i < 5; i += 1) {
+        const angle = i * 1.25 + mac.phase;
+        ctx.beginPath();
+        ctx.moveTo(mac.x, mac.y);
+        ctx.lineTo(mac.x + Math.cos(angle) * 31, mac.y + Math.sin(angle) * 24);
+        ctx.stroke();
+      }
+    }
+
+    function drawChagasBoss(now) {
+      if (heartWon && heartBoss.hp <= 0) return;
+      const isSlamming = heartBoss.slamWave > 0;
+      const slamProgress = clamp((0.78 - heartBoss.slamWave) / 0.78, 0, 0.999);
+      const slamFrame = trypSlamSprites[Math.floor(slamProgress * trypSlamSprites.length)];
+      const walkFrame = trypWalkSprites[Math.floor(now / 140) % trypWalkSprites.length];
+      const sprite = isSlamming ? slamFrame : walkFrame;
+
+      ctx.save();
+      ctx.translate(heartBoss.x, heartBoss.y);
+      ctx.scale(-heartBoss.facing, 1);
+
+      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+        const height = isSlamming ? 304 : 284;
+        const width = height * (sprite.naturalWidth / sprite.naturalHeight);
+        const transparentBottom = isSlamming ? 28 : 24;
+        ctx.drawImage(sprite, -width / 2, -height + 54 + transparentBottom, width, height);
+      } else {
+        ctx.strokeStyle = "#2b1024";
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(-60, 0);
+        ctx.bezierCurveTo(-150, -58, -125, 82, -36, 52);
+        ctx.stroke();
+
+        ctx.fillStyle = "#542160";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 70, 46, 0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#9e4ca7";
+        ctx.beginPath();
+        ctx.ellipse(-6, -7, 50, 27, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#f2d45f";
+        circle(28, -8, 9);
+        circle(8, 12, 7);
+
+        ctx.strokeStyle = "#301128";
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(55, 3);
+        ctx.bezierCurveTo(120, -46, 140, 45, 62, 34);
+        ctx.stroke();
+
+        ctx.fillStyle = "#2b1024";
+        ctx.fillRect(-18, -20, 18, 10);
+        ctx.fillRect(22, 12, 18, 10);
+      }
+      ctx.restore();
+
+      if (heartBoss.slamWave > 0.35) {
+        ctx.fillStyle = "#ffe2ae";
+        ctx.font = "bold 18px 'Courier New', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("PANCADA!", heartBoss.x, heartBoss.y - 80);
+      }
+    }
+
+    function drawBossBar() {
+      const w = 380;
+      const x = W / 2 - w / 2;
+      const y = 86;
+      const pct = clamp(heartBoss.hp / heartBoss.maxHp, 0, 1);
+      ctx.fillStyle = "rgba(12, 3, 7, 0.82)";
+      ctx.fillRect(x, y, w, 32);
+      ctx.fillStyle = "#11351c";
+      ctx.fillRect(x + 6, y + 6, w - 12, 20);
+      ctx.fillStyle = "#34d15b";
+      ctx.fillRect(x + 6, y + 6, (w - 12) * pct, 20);
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 15px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Trypanosoma cruzi", W / 2, y - 8);
+    }
+
+    function drawAxon(axon, now) {
+      const repaired = !axon.damaged || axon.repair >= 1;
+      ctx.strokeStyle = repaired ? "#4dbdff" : "#f0444d";
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.moveTo(axon.x, axon.y);
+      ctx.bezierCurveTo(axon.x + axon.w * 0.28, axon.y - 28, axon.x + axon.w * 0.62, axon.y + 32, axon.x + axon.w, axon.y);
+      ctx.stroke();
+
+      const segments = 9;
+      for (let i = 0; i < segments; i += 1) {
+        const pct = i / (segments - 1);
+        const x = axon.x + axon.w * pct;
+        const y = axon.y + Math.sin(pct * Math.PI * 2) * 18;
+        const covered = repaired || i / segments < axon.repair;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(axon.angle + pct * 0.8);
+        ctx.fillStyle = covered ? "#f6d67a" : "rgba(240, 68, 77, 0.22)";
+        ctx.fillRect(-18, -15, 36, 30);
+        ctx.restore();
+      }
+
+      if (axon.damaged && axon.repair < 1) {
+        ctx.fillStyle = "#ffef7a";
+        for (let i = 0; i < 5; i += 1) {
+          const sparkX = axon.x + 80 + i * 95 + Math.sin(now / 90 + i) * 10;
+          const sparkY = axon.y - 28 + Math.cos(now / 110 + i) * 16;
+          ctx.fillRect(sparkX, sparkY, 8, 8);
+        }
+        ctx.fillStyle = "#fff1d2";
+        ctx.font = "bold 14px 'Courier New', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("CLIQUE PARA REPARAR", axon.x + axon.w / 2, axon.y - 42);
+        ctx.fillStyle = "#290711";
+        ctx.fillRect(axon.x + axon.w / 2 - 62, axon.y + 36, 124, 12);
+        ctx.fillStyle = "#f6d67a";
+        ctx.fillRect(axon.x + axon.w / 2 - 58, axon.y + 39, 116 * axon.repair, 6);
+      }
+    }
+
+    function drawNeuralCapsule(item, now) {
+      ctx.fillStyle = "#071123";
+      ctx.fillRect(item.x - 20, item.y - 20, 44, 44);
+      ctx.fillStyle = item.color;
+      ctx.fillRect(item.x - 16, item.y - 16 + Math.sin(now / 260 + item.x) * 3, 32, 32);
+      ctx.fillStyle = "#101018";
+      ctx.font = "bold 17px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(item.label, item.x, item.y + 6);
+      if ((brainStage === "collect" || brainStage === "repair") && circlesTouch({ x: oligodendrocyte.x, y: oligodendrocyte.y, r: 72 }, { x: item.x, y: item.y, r: 30 })) {
+        ctx.fillStyle = "#fff1d2";
+        ctx.font = "bold 12px 'Courier New', monospace";
+        ctx.fillText("G", item.x, item.y - 28);
+      }
+    }
+
+    function drawOligodendrocyte(now) {
+      if (brainStage === "diagnosis") return;
+      ctx.fillStyle = "#12203c";
+      circle(oligodendrocyte.x + 5, oligodendrocyte.y + 6, oligodendrocyte.r + 7);
+      ctx.fillStyle = "#d6ecff";
+      circle(oligodendrocyte.x, oligodendrocyte.y, oligodendrocyte.r);
+      ctx.strokeStyle = "#d6ecff";
+      ctx.lineWidth = 6;
+      for (let i = 0; i < 6; i += 1) {
+        const angle = i * 1.05 + now / 420;
+        ctx.beginPath();
+        ctx.moveTo(oligodendrocyte.x, oligodendrocyte.y);
+        ctx.lineTo(oligodendrocyte.x + Math.cos(angle) * 45, oligodendrocyte.y + Math.sin(angle) * 34);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 13px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("OLIGODENDROCITO", oligodendrocyte.x, oligodendrocyte.y - 38);
+    }
+
+    function drawNeuralImpulse(now) {
+      axons.forEach((axon) => {
+        const x = axon.x + axon.w * clamp(neuralImpulse, 0, 1);
+        const y = axon.y + Math.sin(neuralImpulse * Math.PI * 2) * 18;
+        ctx.fillStyle = "#fff7a3";
+        circle(x, y, 15 + Math.sin(now / 70) * 4);
+        ctx.fillStyle = "#77e8ff";
+        circle(x, y, 7);
+      });
+    }
+
+    function drawBurst(burst) {
+      const progress = 1 - burst.life / burst.maxLife;
+      ctx.globalAlpha = Math.max(0, burst.life / burst.maxLife);
+      burst.parts.forEach((part) => {
+        ctx.fillStyle = part.color;
+        circle(
+          burst.x + part.x * progress,
+          burst.y + part.y * progress,
+          part.r * (1 - progress * 0.5)
+        );
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    function drawGameHud() {
+      ctx.fillStyle = "rgba(8, 2, 4, 0.72)";
+      ctx.fillRect(12, 12, 690, 54);
+      ctx.fillStyle = "#fff1d2";
+      ctx.font = "bold 16px 'Courier New', monospace";
+      ctx.textAlign = "left";
+      if (phase === 1) {
+        const left = phase1Viruses.filter((virus) => virus.alive).length;
+        ctx.fillText("A/D mover | ESPACO pular | clique: antibiotico | virus: " + left, 24, 44);
+      } else if (phase === 2) {
+        const left = tbEnemies.filter((enemy) => enemy.alive).length;
+        ctx.fillText("ESPACO pular | F coletar | direito: leucocito | cargas: " + scientist.leucocytes + " | TB: " + left, 24, 44);
+      } else if (phase === 3) {
+        ctx.fillText("A/D mover | ESPACO pular | use os esporos para atravessar", 24, 44);
+      } else if (phase === 4) {
+        ctx.fillText("SHIFT entrar | A/D navegar | clique: AAS | monocitos: " + scientist.monocytes, 24, 44);
+      } else if (phase === 5) {
+        ctx.fillText("A/D mover | ESPACO pular | direito: jogar monocitos | monocitos: " + scientist.monocytes, 24, 44);
+      } else if (phase === "brainArrival") {
+        const left = brainRepairNodes.filter((node) => !node.repaired).length;
+        ctx.fillText("A/D mover | encoste nos neuronios | faltam: " + left, 24, 44);
+      } else if (phase === 6) {
+        const action = brainStage === "diagnosis" ? "aguarde scanner" : brainStage === "collect" ? "aproxime e aperte G" : brainStage === "repair" ? "clique nos axonios vermelhos" : brainStage === "test" ? "teste do impulso" : "concluido";
+        ctx.fillText("Fase 5 | " + action + " | L:" + neuralMaterials.lipids + " P:" + neuralMaterials.proteins + " ATP:" + neuralMaterials.atp, 24, 44);
+      }
+    }
+
+    function drawMessageBox() {
+      ctx.fillStyle = "rgba(7, 1, 3, 0.78)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#141015";
+      ctx.fillRect(94, 126, 772, 360);
+      ctx.strokeStyle = "#e04b3e";
+      ctx.lineWidth = 8;
+      ctx.strokeRect(94, 126, 772, 360);
+
+      ctx.fillStyle = "#ffded0";
+      ctx.font = "bold 34px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(message.title, W / 2, 190);
+
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 20px 'Courier New', monospace";
+      message.lines.forEach((line, index) => {
+        wrapText(line, W / 2, 248 + index * 64, 680, 25);
+      });
+
+      ctx.fillStyle = "#ffb86b";
+      ctx.font = "bold 20px 'Courier New', monospace";
+      ctx.fillText(message.button, W / 2, 446);
+    }
+
+    function drawDeathScreen(now) {
+      ctx.fillStyle = "rgba(8, 1, 3, 0.78)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#121015";
+      ctx.fillRect(165, 154, 630, 322);
+      ctx.strokeStyle = "#c52834";
+      ctx.lineWidth = 10;
+      ctx.strokeRect(165, 154, 630, 322);
+      ctx.fillStyle = "#e02635";
+      ctx.font = "bold 72px 'Courier New', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("VOCE MORREU!!!", W / 2, 292);
+      ctx.fillStyle = "#fff1e0";
+      ctx.font = "bold 42px 'Courier New', monospace";
+      ctx.fillText("TENTE OUTRA VEZ.", W / 2, 388);
+      ctx.fillStyle = now % 1000 < 550 ? "#ffebc6" : "#8d2a31";
+      ctx.font = "bold 20px 'Courier New', monospace";
+      ctx.fillText("ENTER OU ESPACO PARA REINICIAR", W / 2, 433);
+    }
+
+    function makeBurst(x, y, color) {
+      const parts = [];
+      for (let i = 0; i < 16; i += 1) {
+        const angle = (Math.PI * 2 * i) / 16;
+        const force = 30 + Math.random() * 48;
+        parts.push({
+          x: Math.cos(angle) * force,
+          y: Math.sin(angle) * force,
+          r: 4 + Math.random() * 6,
+          color: i % 2 ? color : "#fff1d2"
+        });
+      }
+      return { x, y, parts, life: 0.55, maxLife: 0.55 };
+    }
+
+    function pixelBand(x, y, blocks) {
+      blocks.forEach(([bx, by, bw, bh]) => ctx.fillRect(x + bx, y + by, bw, bh));
+    }
+
+    function playerCircle() {
+      return {
+        x: scientist.x + scientist.w * 0.52,
+        y: scientist.y + scientist.h * 0.58,
+        r: 36
+      };
+    }
+
+    function circle(x, y, r) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function circlesTouch(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.hypot(dx, dy) < a.r + b.r;
+    }
+
+    function normalize(x, y) {
+      const length = Math.hypot(x, y) || 1;
+      return { x: x / length, y: y / length };
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function smoothstep(t) {
+      return t * t * (3 - 2 * t);
+    }
+
+    function cubic(a, b, c, d, t) {
+      const nt = 1 - t;
+      return nt * nt * nt * a + 3 * nt * nt * t * b + 3 * nt * t * t * c + t * t * t * d;
+    }
+
+    function wrapText(text, x, y, maxWidth, lineHeight) {
+      const words = text.split(" ");
+      let line = "";
+      let lineY = y;
+      words.forEach((word) => {
+        const test = line + word + " ";
+        if (ctx.measureText(test).width > maxWidth && line !== "") {
+          ctx.fillText(line.trim(), x, lineY);
+          line = word + " ";
+          lineY += lineHeight;
+        } else {
+          line = test;
+        }
+      });
+      ctx.fillText(line.trim(), x, lineY);
+    }
+
+    requestAnimationFrame((time) => {
+      last = time;
+      requestAnimationFrame(loop);
+    });
+  </script>
+</body>
+</html>
